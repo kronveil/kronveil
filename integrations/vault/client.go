@@ -94,8 +94,7 @@ func (c *Client) Health() engine.ComponentHealth {
 
 // ReadSecret reads a secret from Vault.
 func (c *Client) ReadSecret(ctx context.Context, path string) (map[string]interface{}, error) {
-	// In production: uses vault/api client.Logical().Read().
-	_ = ctx
+	// In production: uses vault/api client.Logical().ReadWithContext(ctx, path).
 	return nil, fmt.Errorf("vault read requires configured credentials")
 }
 

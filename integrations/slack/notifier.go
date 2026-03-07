@@ -55,11 +55,8 @@ func (n *Notifier) Health() engine.ComponentHealth {
 func (n *Notifier) NotifyIncident(ctx context.Context, incident *engine.Incident) error {
 	channel := n.channelForSeverity(incident.Severity)
 
-	// Build Block Kit message.
-	blocks := n.buildIncidentBlocks(incident)
-	_ = blocks
-
-	// In production: uses slack-go/slack to post message.
+	// In production: uses slack-go/slack to post message with Block Kit.
+	// blocks := n.buildIncidentBlocks(incident)
 	// api := slack.New(n.config.BotToken)
 	// _, _, err := api.PostMessageContext(ctx, channel, slack.MsgOptionBlocks(blocks...))
 
@@ -95,20 +92,14 @@ func (n *Notifier) channelForSeverity(severity string) string {
 
 func (n *Notifier) buildIncidentBlocks(incident *engine.Incident) []map[string]interface{} {
 	emoji := ":warning:"
-	color := "#f6ad55"
 	switch incident.Severity {
 	case engine.SeverityCritical:
 		emoji = ":red_circle:"
-		color = "#e53e3e"
 	case engine.SeverityHigh:
 		emoji = ":orange_circle:"
-		color = "#ed8936"
 	case engine.SeverityMedium:
 		emoji = ":large_yellow_circle:"
-		color = "#ecc94b"
 	}
-
-	_ = color
 
 	mention := ""
 	if group, ok := n.config.MentionGroups[incident.Severity]; ok {

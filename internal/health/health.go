@@ -79,7 +79,7 @@ func (c *Checker) HTTPHandler() http.HandlerFunc {
 		if result.Status != "healthy" {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-		json.NewEncoder(w).Encode(result)
+		_ = json.NewEncoder(w).Encode(result)
 	}
 }
 
@@ -91,6 +91,6 @@ func (c *Checker) ReadinessHandler() http.HandlerFunc {
 		if result.Status != "healthy" {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
-		json.NewEncoder(w).Encode(result)
+		_ = json.NewEncoder(w).Encode(result)
 	}
 }

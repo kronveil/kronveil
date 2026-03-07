@@ -53,7 +53,7 @@ type SignalState struct {
 
 // New creates a new anomaly detector.
 func New(config Config) *Detector {
-	applyeSensitivity(&config)
+	applySensitivity(&config)
 	return &Detector{
 		config:    config,
 		signals:   make(map[string]*SignalState),
@@ -61,7 +61,7 @@ func New(config Config) *Detector {
 	}
 }
 
-func applyeSensitivity(config *Config) {
+func applySensitivity(config *Config) {
 	switch config.Sensitivity {
 	case "high":
 		config.ZScoreThreshold = 2.0
