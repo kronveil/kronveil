@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Kronveil — Lift the Veil on Your Infrastructure</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #040811;
+    --bg2: #070e1a;
+    --surface: #0c1526;
+    --border: rgba(99,179,237,0.12);
+    --accent: #63b3ed;
+    --accent2: #4fd1c5;
+    --accent3: #f6ad55;
+    --text: #e2e8f0;
+    --muted: #718096;
+    --glow: rgba(99,179,237,0.15);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-weight: 300;
+    overflow-x: hidden;
+    line-height: 1.7;
+  }
+
+  /* ── GRID BACKGROUND ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(99,179,237,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99,179,237,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── NOISE OVERLAY ── */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.2rem 4rem;
+    background: rgba(4,8,17,0.8);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.4rem;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .logo-icon {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 2.5rem;
+    list-style: none;
+  }
+
+  .nav-links a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: color 0.2s;
+    font-weight: 400;
+  }
+
+  .nav-links a:hover { color: var(--accent); }
+
+  .nav-cta {
+    background: var(--accent);
+    color: var(--bg);
+    padding: 0.55rem 1.4rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-decoration: none;
+    letter-spacing: 0.03em;
+    transition: all 0.2s;
+  }
+  .nav-cta:hover { background: #90cdf4; transform: translateY(-1px); }
+
+  /* ── HERO ── */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 8rem 2rem 4rem;
+    z-index: 1;
+    overflow: hidden;
+  }
+
+  /* Radial glow behind hero */
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: 20%; left: 50%;
+    transform: translateX(-50%);
+    width: 800px; height: 500px;
+    background: radial-gradient(ellipse at center,
+      rgba(99,179,237,0.12) 0%,
+      rgba(79,209,197,0.06) 40%,
+      transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(99,179,237,0.08);
+    border: 1px solid rgba(99,179,237,0.2);
+    border-radius: 100px;
+    padding: 0.35rem 1rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    margin-bottom: 2rem;
+    animation: fadeInDown 0.6s ease both;
+  }
+
+  .badge-dot {
+    width: 6px; height: 6px;
+    background: var(--accent2);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .hero h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(3rem, 7vw, 6rem);
+    line-height: 1.0;
+    letter-spacing: -0.04em;
+    margin-bottom: 1.5rem;
+    animation: fadeInUp 0.7s 0.1s ease both;
+  }
+
+  .hero h1 .line1 { display: block; color: var(--text); }
+  .hero h1 .line2 {
+    display: block;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-sub {
+    max-width: 620px;
+    font-size: 1.15rem;
+    color: var(--muted);
+    line-height: 1.8;
+    margin-bottom: 3rem;
+    font-weight: 300;
+    animation: fadeInUp 0.7s 0.2s ease both;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    animation: fadeInUp 0.7s 0.3s ease both;
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--accent);
+    color: var(--bg);
+    padding: 0.9rem 2rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition: all 0.2s;
+    letter-spacing: 0.01em;
+  }
+  .btn-primary:hover {
+    background: #90cdf4;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(99,179,237,0.25);
+  }
+
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 0.9rem 2rem;
+    border-radius: 8px;
+    font-weight: 400;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  /* ── TERMINAL ── */
+  .terminal-wrap {
+    margin-top: 5rem;
+    width: 100%;
+    max-width: 760px;
+    animation: fadeInUp 0.8s 0.5s ease both;
+  }
+
+  .terminal {
+    background: #020609;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow:
+      0 0 0 1px rgba(99,179,237,0.05),
+      0 40px 80px rgba(0,0,0,0.6),
+      0 0 60px rgba(99,179,237,0.05);
+  }
+
+  .terminal-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1.2rem;
+    background: #0a1628;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .t-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .t-red { background: #ff5f57; }
+  .t-yellow { background: #ffbd2e; }
+  .t-green { background: #28c840; }
+
+  .terminal-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .terminal-body {
+    padding: 1.5rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    line-height: 1.9;
+  }
+
+  .t-comment { color: #4a5568; }
+  .t-cmd { color: var(--accent2); }
+  .t-flag { color: var(--accent3); }
+  .t-val { color: #f687b3; }
+  .t-output { color: #68d391; }
+  .t-warn { color: var(--accent3); }
+  .t-info { color: var(--muted); }
+  .t-prompt { color: var(--muted); user-select: none; }
+
+  .cursor {
+    display: inline-block;
+    width: 8px; height: 14px;
+    background: var(--accent);
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+    margin-left: 2px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── STATS STRIP ── */
+  .stats {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stat {
+    background: var(--bg);
+    padding: 2.5rem 2rem;
+    text-align: center;
+    transition: background 0.2s;
+  }
+  .stat:hover { background: var(--surface); }
+
+  .stat-val {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 2.8rem;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.5rem;
+  }
+
+  .stat-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ── SECTION ── */
+  section {
+    position: relative;
+    z-index: 1;
+    padding: 6rem 4rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .section-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 1.5rem;
+  }
+
+  .section-sub {
+    font-size: 1.05rem;
+    color: var(--muted);
+    max-width: 560px;
+    line-height: 1.8;
+  }
+
+  /* ── FEATURES GRID ── */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 4rem;
+  }
+
+  .feature-card {
+    background: var(--bg2);
+    padding: 2.5rem;
+    transition: background 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .feature-card:hover { background: var(--surface); }
+  .feature-card:hover::before { opacity: 1; }
+
+  .feature-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: rgba(99,179,237,0.08);
+    border: 1px solid rgba(99,179,237,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .feature-card h3 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.01em;
+  }
+
+  .feature-card p {
+    font-size: 0.88rem;
+    color: var(--muted);
+    line-height: 1.75;
+  }
+
+  /* ── ARCHITECTURE ── */
+  .arch-section {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .arch-wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 6rem 4rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5rem;
+    align-items: center;
+  }
+
+  .arch-diagram {
+    background: #020609;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    line-height: 1.8;
+    color: var(--muted);
+    overflow-x: auto;
+  }
+
+  .arch-diagram .hl { color: var(--accent); font-weight: 700; }
+  .arch-diagram .hl2 { color: var(--accent2); }
+  .arch-diagram .hl3 { color: var(--accent3); }
+
+  .arch-layers {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+
+  .arch-layer {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .layer-num {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--accent);
+    background: rgba(99,179,237,0.08);
+    border: 1px solid rgba(99,179,237,0.15);
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+    white-space: nowrap;
+    margin-top: 0.1rem;
+  }
+
+  .layer-info h4 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .layer-info p {
+    font-size: 0.83rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  /* ── INTEGRATIONS ── */
+  .integrations-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 3rem;
+  }
+
+  .integration-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 0.82rem;
+    color: var(--text);
+    letter-spacing: 0.01em;
+    transition: all 0.2s;
+  }
+  .integration-pill:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  .pill-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent2);
+  }
+
+  /* ── QUICK START ── */
+  .quickstart {
+    background: #020609;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 3rem;
+  }
+
+  .qs-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: #0a1628;
+  }
+
+  .qs-tab {
+    padding: 0.8rem 1.5rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .qs-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .qs-body {
+    padding: 1.8rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 2;
+  }
+
+  /* ── CTA ── */
+  .cta-section {
+    text-align: center;
+    padding: 8rem 4rem;
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+  }
+
+  .cta-section::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px; height: 400px;
+    background: radial-gradient(ellipse,
+      rgba(99,179,237,0.08) 0%,
+      transparent 70%);
+    pointer-events: none;
+  }
+
+  .cta-section h2 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2.5rem, 5vw, 4rem);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 1.5rem;
+  }
+
+  .cta-section p {
+    color: var(--muted);
+    font-size: 1.05rem;
+    margin-bottom: 3rem;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    position: relative;
+    z-index: 1;
+    border-top: 1px solid var(--border);
+    padding: 3rem 4rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--muted);
+  }
+
+  .footer-links {
+    display: flex;
+    gap: 2rem;
+    list-style: none;
+  }
+
+  .footer-links a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.82rem;
+    transition: color 0.2s;
+  }
+  .footer-links a:hover { color: var(--accent); }
+
+  .footer-copy {
+    font-size: 0.78rem;
+    color: #2d3748;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .reveal.visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    nav { padding: 1rem 2rem; }
+    .nav-links { display: none; }
+    section { padding: 4rem 2rem; }
+    .features-grid { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .arch-wrap { grid-template-columns: 1fr; gap: 3rem; padding: 4rem 2rem; }
+    footer { flex-direction: column; gap: 1.5rem; text-align: center; }
+    .footer-links { flex-wrap: wrap; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">
+    <div class="logo-icon">👁</div>
+    Kronveil
+  </div>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#integrations">Integrations</a></li>
+    <li><a href="#quickstart">Quick Start</a></li>
+    <li><a href="https://github.com/kronveil/kronveil">GitHub</a></li>
+  </ul>
+  <a href="#quickstart" class="nav-cta">Get Started →</a>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-badge">
+    <span class="badge-dot"></span>
+    Open Source · Production Ready · AI-Powered
+  </div>
+
+  <h1>
+    <span class="line1">Lift the veil on your</span>
+    <span class="line2">infrastructure.</span>
+  </h1>
+
+  <p class="hero-sub">
+    Kronveil is an AI-powered all-in-one platform observability agent.
+    It watches everything, understands everything — and acts autonomously
+    so you don't have to.
+  </p>
+
+  <div class="hero-actions">
+    <a href="#quickstart" class="btn-primary">
+      ⚡ Quick Start
+    </a>
+    <a href="https://github.com/kronveil/kronveil" class="btn-secondary">
+      ★ Star on GitHub
+    </a>
+  </div>
+
+  <div class="terminal-wrap">
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="t-dot t-red"></div>
+        <div class="t-dot t-yellow"></div>
+        <div class="t-dot t-green"></div>
+        <span class="terminal-title">kronveil — watch</span>
+      </div>
+      <div class="terminal-body">
+        <div><span class="t-comment"># Install Kronveil in your cluster</span></div>
+        <div><span class="t-prompt">$ </span><span class="t-cmd">helm install kronveil</span> <span class="t-flag">kronveil/kronveil \</span></div>
+        <div>&nbsp;&nbsp;<span class="t-flag">--set</span> <span class="t-val">bedrock.region=us-east-1</span> \</div>
+        <div>&nbsp;&nbsp;<span class="t-flag">--set</span> <span class="t-val">collectors.kubernetes.enabled=true</span></div>
+        <br/>
+        <div><span class="t-output">✓ Kronveil agents deployed across 3 clusters</span></div>
+        <div><span class="t-output">✓ Kafka event bus initialized (10M eps capacity)</span></div>
+        <div><span class="t-output">✓ AWS Bedrock LLM connected</span></div>
+        <div><span class="t-output">✓ Anomaly detector active — watching 2,847 signals</span></div>
+        <br/>
+        <div><span class="t-warn">⚠ Anomaly detected: kafka-consumer-lag spiking (p99: 48s)</span></div>
+        <div><span class="t-info">→ Root cause: downstream-payments pod OOM (3/5 replicas)</span></div>
+        <div><span class="t-output">✓ Auto-remediated: scaled to 8 replicas, lag normalized</span></div>
+        <div><span class="t-info">→ MTTR: 23s &nbsp;|&nbsp; Incident closed before any alert fired</span></div>
+        <br/>
+        <div><span class="t-prompt">$ </span><span class="cursor"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="stats">
+  <div class="stat reveal">
+    <div class="stat-val">10M+</div>
+    <div class="stat-label">Events / Second</div>
+  </div>
+  <div class="stat reveal">
+    <div class="stat-val">60%+</div>
+    <div class="stat-label">MTTR Reduction</div>
+  </div>
+  <div class="stat reveal">
+    <div class="stat-val">99.99%</div>
+    <div class="stat-label">Platform Uptime</div>
+  </div>
+  <div class="stat reveal">
+    <div class="stat-val">50+</div>
+    <div class="stat-label">VPC / Clusters</div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="section-tag">// Core Capabilities</div>
+  <h2 class="section-title reveal">Observability that<br/>thinks for itself.</h2>
+  <p class="section-sub reveal">
+    Built from real-world experience managing $4.5 trillion in daily financial settlements.
+    Every feature battle-tested at enterprise scale.
+  </p>
+
+  <div class="features-grid">
+    <div class="feature-card reveal">
+      <div class="feature-icon">🤖</div>
+      <h3>AI Incident Responder</h3>
+      <p>LLM-powered root-cause analysis using AWS Bedrock. Kronveil traces causal chains across services and remediates autonomously — before your on-call wakes up.</p>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">📡</div>
+      <h3>Universal Telemetry</h3>
+      <p>Collects from Kubernetes, Kafka, AWS/Azure/GCP, CI/CD pipelines, and custom sources. One unified stream, one unified truth.</p>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">🔮</div>
+      <h3>Predictive Anomaly Detection</h3>
+      <p>ML models predict failures before they occur. Reduce MTTR by 60%+ through early detection of drift, memory pressure, and latency degradation patterns.</p>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">🏗️</div>
+      <h3>Capacity Intelligence</h3>
+      <p>AI-driven forecasting recommends right-sizing, spot instance strategies, and reserved capacity decisions — automatically reducing cloud spend.</p>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">📋</div>
+      <h3>Policy-as-Code Engine</h3>
+      <p>OPA-based governance enforced uniformly across Kubernetes, Kafka, and IaC. Security and compliance as a first-class platform citizen.</p>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">🔐</div>
+      <h3>Zero-Trust Security</h3>
+      <p>Deep HashiCorp Vault and External Secrets integration. Secrets-aware monitoring with dynamic rotation visibility and certificate lifecycle tracking.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<div class="arch-section">
+  <div class="arch-wrap">
+    <div>
+      <div class="section-tag">// Architecture</div>
+      <h2 class="section-title reveal">Designed for<br/>enterprise scale.</h2>
+      <p class="section-sub reveal" style="margin-bottom: 2rem;">
+        Every layer purpose-built for high-throughput, mission-critical environments.
+        Kafka as the backbone. Bedrock as the brain.
+      </p>
+
+      <div class="arch-layers">
+        <div class="arch-layer reveal">
+          <span class="layer-num">01</span>
+          <div class="layer-info">
+            <h4>Collectors Layer</h4>
+            <p>Lightweight agents deployed per cluster/cloud. Emit structured events to the Kafka backbone at 10M+ eps.</p>
+          </div>
+        </div>
+        <div class="arch-layer reveal">
+          <span class="layer-num">02</span>
+          <div class="layer-info">
+            <h4>Kafka Event Bus</h4>
+            <p>Multi-region Confluent Kafka clusters with Cluster Linking. The central nervous system of Kronveil.</p>
+          </div>
+        </div>
+        <div class="arch-layer reveal">
+          <span class="layer-num">03</span>
+          <div class="layer-info">
+            <h4>Intelligence Engine</h4>
+            <p>AWS Bedrock LLMs for root-cause analysis, anomaly detection ML, and capacity forecasting models.</p>
+          </div>
+        </div>
+        <div class="arch-layer reveal">
+          <span class="layer-num">04</span>
+          <div class="layer-info">
+            <h4>Responders & Integrations</h4>
+            <p>Autonomous remediation, ChatOps via Slack, GitOps triggers, and PagerDuty escalations.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arch-diagram reveal">
+<pre>
+┌─────────────────────────────┐
+│     <span class="hl">KRONVEIL PLATFORM</span>        │
+│                             │
+│  ┌─────────┐  ┌──────────┐  │
+│  │<span class="hl2">COLLECT  </span>│  │<span class="hl"> BEDROCK  </span>│  │
+│  │         │─▶│  LLM     │  │
+│  │ K8s     │  │  Engine  │  │
+│  │ Kafka   │  │  Anomaly │  │
+│  │ AWS/GCP │  │  Root    │  │
+│  │ CI/CD   │  │  Cause   │  │
+│  └─────────┘  └──────────┘  │
+│        │           │        │
+│  ┌─────▼───────────▼─────┐  │
+│  │   <span class="hl3">KAFKA EVENT BUS</span>     │  │
+│  │   10M+ events/sec     │  │
+│  └───────────────────────┘  │
+│  ┌───────────────────────┐  │
+│  │   <span class="hl">RESPOND & REMEDIATE</span>│  │
+│  │ Auto-heal · Slack     │  │
+│  │ GitOps · PagerDuty    │  │
+│  └───────────────────────┘  │
+│  ┌───────────────────────┐  │
+│  │    <span class="hl2">OPA POLICY ENGINE</span>  │  │
+│  │ Governance · Compliance│  │
+│  └───────────────────────┘  │
+└─────────────────────────────┘
+</pre>
+    </div>
+  </div>
+</div>
+
+<!-- INTEGRATIONS -->
+<section id="integrations">
+  <div class="section-tag">// Integrations</div>
+  <h2 class="section-title reveal">Connects to<br/>your entire stack.</h2>
+  <p class="section-sub reveal">Works with the tools you already run. No rip and replace.</p>
+
+  <div class="integrations-grid reveal">
+    <span class="integration-pill"><span class="pill-dot"></span>Kubernetes</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Apache Kafka</span>
+    <span class="integration-pill"><span class="pill-dot"></span>AWS Bedrock</span>
+    <span class="integration-pill"><span class="pill-dot"></span>AWS CloudWatch</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Azure Monitor</span>
+    <span class="integration-pill"><span class="pill-dot"></span>GCP Operations</span>
+    <span class="integration-pill"><span class="pill-dot"></span>HashiCorp Vault</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Prometheus</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Grafana</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Datadog</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Splunk</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Elasticsearch</span>
+    <span class="integration-pill"><span class="pill-dot"></span>OPA Gatekeeper</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Falco</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Istio</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Flux CD</span>
+    <span class="integration-pill"><span class="pill-dot"></span>ArgoCD</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Terraform</span>
+    <span class="integration-pill"><span class="pill-dot"></span>GitHub Actions</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Jenkins</span>
+    <span class="integration-pill"><span class="pill-dot"></span>PagerDuty</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Slack</span>
+    <span class="integration-pill"><span class="pill-dot"></span>Confluent</span>
+    <span class="integration-pill"><span class="pill-dot"></span>AWS MSK</span>
+  </div>
+</section>
+
+<!-- QUICK START -->
+<section id="quickstart">
+  <div class="section-tag">// Quick Start</div>
+  <h2 class="section-title reveal">Up and running<br/>in minutes.</h2>
+  <p class="section-sub reveal">Deploy Kronveil into any Kubernetes cluster with a single Helm command.</p>
+
+  <div class="quickstart reveal">
+    <div class="qs-tabs">
+      <div class="qs-tab active">Helm</div>
+      <div class="qs-tab">kubectl</div>
+      <div class="qs-tab">Docker</div>
+    </div>
+    <div class="qs-body">
+      <div><span class="t-comment"># Add the Kronveil Helm repo</span></div>
+      <div><span class="t-prompt">$ </span><span class="t-cmd">helm repo add</span> kronveil https://charts.kronveil.io</div>
+      <div><span class="t-prompt">$ </span><span class="t-cmd">helm repo update</span></div>
+      <br/>
+      <div><span class="t-comment"># Install with AWS Bedrock + Kubernetes collectors</span></div>
+      <div><span class="t-prompt">$ </span><span class="t-cmd">helm install</span> kronveil kronveil/kronveil \</div>
+      <div>&nbsp;&nbsp;<span class="t-flag">--namespace</span> kronveil \</div>
+      <div>&nbsp;&nbsp;<span class="t-flag">--create-namespace</span> \</div>
+      <div>&nbsp;&nbsp;<span class="t-flag">--set</span> <span class="t-val">bedrock.region=us-east-1</span> \</div>
+      <div>&nbsp;&nbsp;<span class="t-flag">--set</span> <span class="t-val">collectors.kubernetes.enabled=true</span> \</div>
+      <div>&nbsp;&nbsp;<span class="t-flag">--set</span> <span class="t-val">collectors.kafka.enabled=true</span></div>
+      <br/>
+      <div><span class="t-output">✓ Release "kronveil" deployed to namespace "kronveil"</span></div>
+      <div><span class="t-output">✓ Dashboard: http://localhost:8080 (after port-forward)</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section">
+  <h2 class="reveal">Built by platform engineers.<br/>For platform engineers.</h2>
+  <p class="reveal">Join engineers running Kronveil on mission-critical infrastructure worldwide.</p>
+  <div class="hero-actions reveal">
+    <a href="https://github.com/kronveil/kronveil" class="btn-primary">★ Star on GitHub</a>
+    <a href="https://discord.gg/kronveil" class="btn-secondary">Join Discord</a>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">Kronveil</div>
+  <ul class="footer-links">
+    <li><a href="#">Documentation</a></li>
+    <li><a href="#">Contributing</a></li>
+    <li><a href="#">Discord</a></li>
+    <li><a href="#">License</a></li>
+  </ul>
+  <div class="footer-copy">Apache 2.0 · Open Source</div>
+</footer>
+
+<script>
+  // Scroll reveal
+  const reveals = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((e, i) => {
+      if (e.isIntersecting) {
+        setTimeout(() => e.target.classList.add('visible'), i * 60);
+      }
+    });
+  }, { threshold: 0.1 });
+  reveals.forEach(el => observer.observe(el));
+
+  // Tab switching
+  document.querySelectorAll('.qs-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.qs-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

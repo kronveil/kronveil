@@ -1,0 +1,78 @@
+# Kronveil Agent Configuration
+# Copy this file to /etc/kronveil/config.yaml and customize
+
+agent:
+  name: kronveil-agent
+  log_level: info
+  log_format: json
+
+kafka:
+  bootstrap_servers: localhost:9092
+  group_id: kronveil-agent
+
+bedrock:
+  region: us-east-1
+  model_id: anthropic.claude-3-sonnet-20240229-v1:0
+  max_tokens: 2048
+  temperature: 0.3
+
+collectors:
+  kubernetes:
+    enabled: true
+    namespaces: []  # empty = all namespaces
+    poll_interval: 30s
+  kafka:
+    enabled: true
+    bootstrap_servers: localhost:9092
+    monitored_topics:
+      - payments
+      - orders
+      - events
+    consumer_groups:
+      - payments-processor
+      - order-service
+    lag_threshold: 10000
+  cloud:
+    enabled: false
+    provider: aws
+    regions:
+      - us-east-1
+  cicd:
+    enabled: false
+  logs:
+    enabled: false
+
+intelligence:
+  anomaly_detection:
+    sensitivity: medium    # low, medium, high
+    window_size: 300
+    zscore_threshold: 3.0
+  remediation:
+    auto_remediate: true
+    dry_run: false         # Set to true for testing
+    max_retries: 3
+
+integrations:
+  vault:
+    enabled: false
+    address: https://vault.example.com
+    auth_method: kubernetes
+  slack:
+    enabled: false
+    bot_token: ""
+    default_channel: "#kronveil-alerts"
+    channels:
+      critical: "#oncall-critical"
+      high: "#kronveil-alerts"
+  pagerduty:
+    enabled: false
+    routing_key: ""
+  prometheus:
+    enabled: true
+    port: 9090
+    metrics_path: /metrics
+
+api:
+  rest_port: 8080
+  grpc_port: 9091
+  api_key: ""  # Set for authentication

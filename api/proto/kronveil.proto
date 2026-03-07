@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package kronveil.v1;
+
+option go_package = "github.com/kronveil/kronveil/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// KronveilService provides the gRPC API for the Kronveil agent.
+service KronveilService {
+  // StreamEvents streams real-time telemetry events.
+  rpc StreamEvents(StreamEventsRequest) returns (stream TelemetryEvent);
+
+  // GetIncident retrieves an incident by ID.
+  rpc GetIncident(GetIncidentRequest) returns (Incident);
+
+  // ListIncidents lists incidents with optional filtering.
+  rpc ListIncidents(ListIncidentsRequest) returns (ListIncidentsResponse);
+
+  // GetHealth returns the agent health status.
+  rpc GetHealth(GetHealthRequest) returns (HealthResponse);
+}
+
+message TelemetryEvent {
+  string id = 1;
+  string source = 2;
+  string type = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  map<string, string> metadata = 5;
+  string severity = 6;
+  bytes payload = 7;
+}
+
+message Incident {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string severity = 4;
+  string status = 5;
+  string root_cause = 6;
+  repeated string affected_resources = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp resolved_at = 9;
+  repeated TimelineEntry timeline = 10;
+}
+
+message TimelineEntry {
+  google.protobuf.Timestamp timestamp = 1;
+  string action = 2;
+  string details = 3;
+  string actor = 4;
+}
+
+message StreamEventsRequest {
+  repeated string sources = 1;
+  string min_severity = 2;
+}
+
+message GetIncidentRequest {
+  string id = 1;
+}
+
+message ListIncidentsRequest {
+  string status = 1;
+  int32 limit = 2;
+}
+
+message ListIncidentsResponse {
+  repeated Incident incidents = 1;
+}
+
+message GetHealthRequest {}
+
+message HealthResponse {
+  string status = 1;
+  repeated ComponentHealth components = 2;
+  int64 uptime_seconds = 3;
+  string version = 4;
+}
+
+message ComponentHealth {
+  string name = 1;
+  string status = 2;
+  string message = 3;
+}

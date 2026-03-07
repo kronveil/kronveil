@@ -1,0 +1,31 @@
+FROM golang:1.21-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w \
+      -X github.com/kronveil/kronveil/internal/version.Version=$(cat VERSION 2>/dev/null || echo 0.1.0) \
+      -X github.com/kronveil/kronveil/internal/version.GitCommit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) \
+      -X github.com/kronveil/kronveil/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -o /kronveil ./cmd/kronveil
+
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -g 1000 kronveil && \
+    adduser -u 1000 -G kronveil -s /bin/sh -D kronveil
+
+COPY --from=builder /kronveil /usr/local/bin/kronveil
+
+USER kronveil
+
+EXPOSE 8080 9090 9091
+
+ENTRYPOINT ["kronveil"]
+CMD ["serve"]
