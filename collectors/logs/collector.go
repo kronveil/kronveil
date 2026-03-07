@@ -82,7 +82,7 @@ func (c *Collector) Start(ctx context.Context) error {
 		return fmt.Errorf("log collector already running")
 	}
 	c.running = true
-	ctx, c.cancel = context.WithCancel(ctx)
+	_, c.cancel = context.WithCancel(ctx)
 	c.mu.Unlock()
 
 	log.Printf("[log-collector] Starting log collector (%d sources, %d error patterns)",

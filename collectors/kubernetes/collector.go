@@ -68,7 +68,7 @@ func (c *Collector) Start(ctx context.Context) error {
 		return fmt.Errorf("kubernetes collector already running")
 	}
 	c.running = true
-	ctx, c.cancel = context.WithCancel(ctx)
+	_, c.cancel = context.WithCancel(ctx)
 	c.mu.Unlock()
 
 	log.Printf("[k8s-collector] Starting Kubernetes collector (namespaces: %v, poll: %s)",

@@ -78,7 +78,7 @@ func (c *Collector) Start(ctx context.Context) error {
 		return fmt.Errorf("cicd collector already running")
 	}
 	c.running = true
-	ctx, c.cancel = context.WithCancel(ctx)
+	_, c.cancel = context.WithCancel(ctx)
 	c.mu.Unlock()
 
 	log.Printf("[cicd-collector] Starting CI/CD collector (repos: %v)", c.config.RepoFilters)

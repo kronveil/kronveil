@@ -95,7 +95,7 @@ func (c *Collector) Start(ctx context.Context) error {
 		return fmt.Errorf("cloud collector already running")
 	}
 	c.running = true
-	ctx, c.cancel = context.WithCancel(ctx)
+	_, c.cancel = context.WithCancel(ctx)
 	c.mu.Unlock()
 
 	log.Printf("[cloud-collector] Starting %s collector (regions: %v)", c.config.Provider, c.config.Regions)

@@ -36,7 +36,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.running = true
 	e.startTime = time.Now()
-	ctx, e.cancel = context.WithCancel(ctx)
+	_, e.cancel = context.WithCancel(ctx)
 	e.mu.Unlock()
 
 	log.Println("[engine] Starting Kronveil agent engine...")

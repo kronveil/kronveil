@@ -60,7 +60,7 @@ func (a *Analyzer) Name() string { return "root-cause-analyzer" }
 func (a *Analyzer) Start(ctx context.Context) error {
 	a.mu.Lock()
 	a.running = true
-	ctx, a.cancel = context.WithCancel(ctx)
+	_, a.cancel = context.WithCancel(ctx)
 	a.mu.Unlock()
 	log.Println("[rootcause] Root cause analyzer started")
 	return nil
