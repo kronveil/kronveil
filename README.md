@@ -16,7 +16,7 @@ Kronveil is an open-source, AI-powered all-in-one platform observability agent �
 
 Modern platform infrastructure is a living, breathing organism — thousands of microservices, event streams, cloud workloads, and security surfaces changing every second. Traditional monitoring tells you *what broke*. **Kronveil tells you *why*, predicts *when*, and fixes it *before you wake up*.**
 
-Built from real-world experience managing **$4.5 trillion in daily financial settlements**, Kronveil combines:
+Kronveil combines:
 
 - 🔭 **Deep telemetry collection** across Kubernetes, Kafka, multi-cloud, and CI/CD
 - 🧠 **LLM-powered intelligence** via AWS Bedrock for root-cause analysis and autonomous remediation

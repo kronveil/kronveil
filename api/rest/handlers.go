@@ -48,8 +48,7 @@ func (s *Server) handleListIncidents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, incidents)
 }
 
-func (s *Server) handleGetIncident(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+func (s *Server) handleGetIncident(w http.ResponseWriter, r *http.Request, id string) {
 	if s.responder == nil {
 		writeError(w, http.StatusNotFound, "incident not found")
 		return
@@ -62,8 +61,7 @@ func (s *Server) handleGetIncident(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, inc)
 }
 
-func (s *Server) handleAckIncident(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+func (s *Server) handleAckIncident(w http.ResponseWriter, r *http.Request, id string) {
 	if s.responder == nil {
 		writeError(w, http.StatusNotFound, "incident not found")
 		return
@@ -75,8 +73,7 @@ func (s *Server) handleAckIncident(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "acknowledged"})
 }
 
-func (s *Server) handleResolveIncident(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+func (s *Server) handleResolveIncident(w http.ResponseWriter, r *http.Request, id string) {
 	if s.responder == nil {
 		writeError(w, http.StatusNotFound, "incident not found")
 		return
@@ -102,8 +99,8 @@ func (s *Server) handleListCollectors(w http.ResponseWriter, r *http.Request) {
 	for _, c := range collectors {
 		h := c.Health()
 		result = append(result, map[string]interface{}{
-			"name":   c.Name(),
-			"status": h.Status,
+			"name":    c.Name(),
+			"status":  h.Status,
 			"message": h.Message,
 		})
 	}
@@ -112,12 +109,12 @@ func (s *Server) handleListCollectors(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMetricsSummary(w http.ResponseWriter, r *http.Request) {
 	summary := map[string]interface{}{
-		"events_total":    0,
-		"events_per_sec":  0,
+		"events_total":     0,
+		"events_per_sec":   0,
 		"active_incidents": 0,
-		"anomalies_24h":   0,
-		"mttr_avg_sec":    0,
-		"collectors":      0,
+		"anomalies_24h":    0,
+		"mttr_avg_sec":     0,
+		"collectors":       0,
 	}
 	if s.engine != nil {
 		summary["collectors"] = len(s.engine.Registry().Collectors())

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/kronveil/kronveil/core/engine"
@@ -40,24 +41,45 @@ func NewServer(config Config, eng *engine.Engine, resp *incident.Responder) *Ser
 }
 
 func (s *Server) registerRoutes() {
-	// Health endpoints
-	s.mux.HandleFunc("GET /api/v1/health", s.handleHealth)
-	s.mux.HandleFunc("GET /api/v1/status", s.handleStatus)
+	s.mux.HandleFunc("/api/v1/health", s.handleHealth)
+	s.mux.HandleFunc("/api/v1/status", s.handleStatus)
+	s.mux.HandleFunc("/api/v1/incidents", s.withAuth(s.handleIncidents))
+	s.mux.HandleFunc("/api/v1/incidents/", s.withAuth(s.handleIncidentByID))
+	s.mux.HandleFunc("/api/v1/anomalies", s.withAuth(s.handleListAnomalies))
+	s.mux.HandleFunc("/api/v1/collectors", s.withAuth(s.handleListCollectors))
+	s.mux.HandleFunc("/api/v1/metrics/summary", s.withAuth(s.handleMetricsSummary))
+}
 
-	// Incident endpoints
-	s.mux.HandleFunc("GET /api/v1/incidents", s.withAuth(s.handleListIncidents))
-	s.mux.HandleFunc("GET /api/v1/incidents/{id}", s.withAuth(s.handleGetIncident))
-	s.mux.HandleFunc("POST /api/v1/incidents/{id}/acknowledge", s.withAuth(s.handleAckIncident))
-	s.mux.HandleFunc("POST /api/v1/incidents/{id}/resolve", s.withAuth(s.handleResolveIncident))
+// handleIncidents dispatches /api/v1/incidents requests.
+func (s *Server) handleIncidents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	s.handleListIncidents(w, r)
+}
 
-	// Anomaly endpoints
-	s.mux.HandleFunc("GET /api/v1/anomalies", s.withAuth(s.handleListAnomalies))
+// handleIncidentByID dispatches /api/v1/incidents/{id}... requests.
+func (s *Server) handleIncidentByID(w http.ResponseWriter, r *http.Request) {
+	// Parse: /api/v1/incidents/{id} or /api/v1/incidents/{id}/acknowledge etc.
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/incidents/")
+	parts := strings.SplitN(path, "/", 2)
+	id := parts[0]
+	action := ""
+	if len(parts) > 1 {
+		action = parts[1]
+	}
 
-	// Collector endpoints
-	s.mux.HandleFunc("GET /api/v1/collectors", s.withAuth(s.handleListCollectors))
-
-	// Metrics endpoint
-	s.mux.HandleFunc("GET /api/v1/metrics/summary", s.withAuth(s.handleMetricsSummary))
+	switch {
+	case r.Method == http.MethodGet && action == "":
+		s.handleGetIncident(w, r, id)
+	case r.Method == http.MethodPost && action == "acknowledge":
+		s.handleAckIncident(w, r, id)
+	case r.Method == http.MethodPost && action == "resolve":
+		s.handleResolveIncident(w, r, id)
+	default:
+		writeError(w, http.StatusNotFound, "not found")
+	}
 }
 
 // Start begins serving the REST API.
