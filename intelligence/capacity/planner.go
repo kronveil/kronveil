@@ -52,9 +52,8 @@ type ForecastPoint struct {
 type Planner struct {
 	config          Config
 	mu              sync.RWMutex
-	resourceData    map[string]*ResourceTimeSeries
-	recommendations []Recommendation
-	running         bool
+	resourceData map[string]*ResourceTimeSeries
+	running      bool
 	cancel          context.CancelFunc
 }
 

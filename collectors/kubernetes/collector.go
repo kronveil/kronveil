@@ -43,11 +43,10 @@ type Collector struct {
 }
 
 type collectorStats struct {
-	podsWatched    int
-	nodesWatched   int
-	eventsEmitted  int64
-	errorsCount    int64
-	lastEventTime  time.Time
+	podsWatched   int
+	nodesWatched  int
+	eventsEmitted int64
+	lastEventTime time.Time
 }
 
 // New creates a new Kubernetes collector.

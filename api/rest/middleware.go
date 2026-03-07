@@ -64,8 +64,8 @@ func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// rateLimiter implements a simple token bucket rate limiter.
-type rateLimiter struct {
+// RateLimiter implements a simple token bucket rate limiter.
+type RateLimiter struct {
 	mu       sync.Mutex
 	clients  map[string]*clientBucket
 	rate     float64
@@ -77,15 +77,17 @@ type clientBucket struct {
 	lastRefill time.Time
 }
 
-func newRateLimiter(requestsPerSec float64, burst int) *rateLimiter {
-	return &rateLimiter{
+// NewRateLimiter creates a rate limiter with the given requests/sec and burst capacity.
+func NewRateLimiter(requestsPerSec float64, burst int) *RateLimiter {
+	return &RateLimiter{
 		clients:  make(map[string]*clientBucket),
 		rate:     requestsPerSec,
 		capacity: burst,
 	}
 }
 
-func (rl *rateLimiter) allow(clientIP string) bool {
+// Allow checks if the given client IP is allowed to make a request.
+func (rl *RateLimiter) Allow(clientIP string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 

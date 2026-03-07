@@ -183,7 +183,7 @@ func (a *Analyzer) heuristicAnalysis(service string, chain, impacted []string, e
 
 func buildAnalysisPrompt(service string, chain, impacted []string, evidence []Evidence, events []engine.TelemetryEvent) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("## Incident Analysis Request\n\n"))
+	b.WriteString("## Incident Analysis Request\n\n")
 	b.WriteString(fmt.Sprintf("**Failing Service:** %s\n\n", service))
 
 	if len(chain) > 0 {
