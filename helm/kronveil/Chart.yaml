@@ -1,0 +1,19 @@
+apiVersion: v2
+name: kronveil
+description: AI-powered infrastructure observability agent
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - observability
+  - ai
+  - kubernetes
+  - kafka
+  - monitoring
+  - incident-response
+home: https://github.com/kronveil/kronveil
+sources:
+  - https://github.com/kronveil/kronveil
+maintainers:
+  - name: Kronveil
+    url: https://github.com/kronveil

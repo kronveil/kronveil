@@ -1,5 +1,5 @@
 # Binaries
-kronveil
+/kronveil
 *.exe
 *.dll
 *.so

@@ -1,0 +1,132 @@
+replicaCount: 1
+
+image:
+  repository: kronveil/agent
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+rbac:
+  create: true
+
+agent:
+  logLevel: info
+  logFormat: json
+
+bedrock:
+  region: us-east-1
+  modelId: "anthropic.claude-3-sonnet-20240229-v1:0"
+  maxTokens: 2048
+  temperature: 0.3
+
+kafka:
+  bootstrapServers: "kafka:9092"
+  groupId: "kronveil-agent"
+
+collectors:
+  kubernetes:
+    enabled: true
+    namespaces: []
+    pollInterval: 30s
+  kafka:
+    enabled: false
+    bootstrapServers: ""
+    monitoredTopics: []
+    consumerGroups: []
+    lagThreshold: 10000
+  cloud:
+    enabled: false
+    provider: aws
+    regions: []
+  cicd:
+    enabled: false
+  logs:
+    enabled: false
+
+intelligence:
+  anomalyDetection:
+    sensitivity: medium
+    windowSize: 300
+    zscoreThreshold: 3.0
+  remediation:
+    autoRemediate: true
+    dryRun: false
+    maxRetries: 3
+
+integrations:
+  vault:
+    enabled: false
+    address: ""
+    authMethod: kubernetes
+  slack:
+    enabled: false
+    botToken: ""
+    defaultChannel: "#kronveil-alerts"
+  pagerduty:
+    enabled: false
+    routingKey: ""
+  prometheus:
+    enabled: true
+    port: 9090
+
+api:
+  restPort: 8080
+  grpcPort: 9091
+
+dashboard:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: kronveil/dashboard
+    pullPolicy: IfNotPresent
+    tag: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: kronveil.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
