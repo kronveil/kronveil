@@ -43,30 +43,247 @@ Kronveil combines:
 
 ## 🏗️ Architecture
 
+### System Overview
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        KRONVEIL PLATFORM                        │
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │  COLLECTORS  │  │ INTELLIGENCE │  │     RESPONDERS       │  │
-│  │              │  │              │  │                      │  │
-│  │ • Kubernetes │  │ • AWS Bedrock│  │ • Auto-Remediation   │  │
-│  │ • Kafka      │──▶  LLM Engine  │──▶ • Incident Manager  │  │
-│  │ • AWS/GCP/AZ │  │ • Anomaly ML │  │ • Capacity Planner  │  │
-│  │ • CI/CD      │  │ • Root Cause │  │ • Slack/PagerDuty   │  │
-│  │ • Logs/Traces│  │   Analyzer   │  │ • GitOps Triggers   │  │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
-│          │                │                      │              │
-│          └────────────────▼──────────────────────┘              │
-│                    ┌─────────────┐                              │
-│                    │ KAFKA BUS   │  Event streaming backbone    │
-│                    │ (10M+ eps)  │                              │
-│                    └─────────────┘                              │
-│          ┌─────────────────────────────────────┐               │
-│          │         POLICY ENGINE (OPA)          │               │
-│          │  Governance · Compliance · Security  │               │
-│          └─────────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                            KRONVEIL PLATFORM                                 │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                         DATA COLLECTION LAYER                           │ │
+│  │                                                                         │ │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌────────────────┐   │ │
+│  │  │ Kubernetes  │ │    Kafka    │ │    Cloud    │ │  CI/CD + Logs  │   │ │
+│  │  │  Collector  │ │  Collector  │ │  Collector  │ │   Collectors   │   │ │
+│  │  │             │ │             │ │             │ │                │   │ │
+│  │  │ Pods/Nodes  │ │ Lag/Topics  │ │ EC2/RDS/ELB│ │ GitHub Actions │   │ │
+│  │  │ Events/HPA  │ │ Throughput  │ │ Lambda/S3  │ │ Jenkins/GitLab │   │ │
+│  │  │ Metrics API │ │ Partitions  │ │ CloudWatch │ │ File Tailing   │   │ │
+│  │  └──────┬──────┘ └──────┬──────┘ └──────┬──────┘ └───────┬────────┘   │ │
+│  └─────────┼───────────────┼───────────────┼─────────────────┼────────────┘ │
+│            │               │               │                 │              │
+│            ▼               ▼               ▼                 ▼              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                     APACHE KAFKA EVENT BUS                              │ │
+│  │                                                                         │ │
+│  │  telemetry.raw ──▶ telemetry.enriched ──▶ anomalies.detected           │ │
+│  │  incidents.new ──▶ incidents.updated  ──▶ remediation.actions          │ │
+│  │  policy.violations ──▶ policy.audit   ──▶ capacity.forecasts          │ │
+│  │                                                                         │ │
+│  │                     10M+ events/sec · 3x replication                    │ │
+│  └────────────────────────────┬────────────────────────────────────────────┘ │
+│                               │                                              │
+│            ┌──────────────────┼──────────────────┐                          │
+│            ▼                  ▼                   ▼                          │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                       INTELLIGENCE LAYER                                │ │
+│  │                                                                         │ │
+│  │  ┌─────────────────┐ ┌──────────────────┐ ┌──────────────────────────┐ │ │
+│  │  │  Anomaly        │ │  Root Cause      │ │  Capacity                │ │ │
+│  │  │  Detector       │ │  Analyzer        │ │  Planner                 │ │ │
+│  │  │                 │ │                  │ │                          │ │ │
+│  │  │ Z-Score/EWMA    │ │ Dependency Graph │ │ Linear Regression        │ │ │
+│  │  │ Isolation Score │ │ Causal Chain DFS │ │ Confidence Intervals     │ │ │
+│  │  │ Trend Predict   │ │ Evidence Collect │ │ Right-Sizing Recommend   │ │ │
+│  │  └────────┬────────┘ └────────┬─────────┘ └────────────┬─────────────┘ │ │
+│  │           │                   │                         │               │ │
+│  │           ▼                   ▼                         │               │ │
+│  │  ┌─────────────────────────────────────┐               │               │ │
+│  │  │     INCIDENT RESPONDER              │◀──────────────┘               │ │
+│  │  │                                     │                               │ │
+│  │  │  Detect ──▶ Triage ──▶ Respond ──▶ Resolve                         │ │
+│  │  │  Correlate events within time window                                │ │
+│  │  │  Auto-remediate with circuit breaker                                │ │
+│  │  └──────────────────┬──────────────────┘                               │ │
+│  └─────────────────────┼──────────────────────────────────────────────────┘ │
+│                        │                                                     │
+│            ┌───────────┼───────────┐                                        │
+│            ▼           ▼           ▼                                        │
+│  ┌──────────────┐ ┌─────────┐ ┌───────────┐                                │
+│  │ AWS Bedrock  │ │  Slack  │ │ PagerDuty │                                │
+│  │  LLM API    │ │Block Kit│ │Events v2  │                                │
+│  │ Claude/Titan │ │ChatOps  │ │ On-Call   │                                │
+│  └──────────────┘ └─────────┘ └───────────┘                                │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │  GOVERNANCE: OPA Policy Engine · Rego Rules · Compliance Audit Trail   │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │  SECURITY: HashiCorp Vault · Secret Rotation · Certificate Lifecycle   │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                      │
+│  │  REST API    │  │  gRPC API    │  │  Prometheus  │                      │
+│  │  :8080       │  │  :9091       │  │  :9090       │                      │
+│  └──────────────┘  └──────────────┘  └──────────────┘                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Event Flow Pipeline
+
+```
+                    REAL-TIME EVENT PIPELINE
+ ═══════════════════════════════════════════════════════════
+
+ SOURCES                 PROCESSING                 ACTIONS
+ ───────                 ──────────                 ───────
+
+ ┌──────────┐     ┌──────────────────┐     ┌──────────────────┐
+ │  K8s API ├────▶│                  │     │  Scale Pods      │
+ └──────────┘     │   Telemetry      │     ├──────────────────┤
+ ┌──────────┐     │   Events         │     │  Restart Service │
+ │  Kafka   ├────▶│                  │     ├──────────────────┤
+ │  Metrics │     │  Source/Type/    │     │  Drain Node      │
+ └──────────┘     │  Payload/Time    │     ├──────────────────┤
+ ┌──────────┐     └────────┬─────────┘     │  Rollback Deploy │
+ │  Cloud   ├──┐           │               └────────▲─────────┘
+ │  APIs    │  │           ▼                        │
+ └──────────┘  │  ┌──────────────────┐              │
+ ┌──────────┐  │  │                  │    ┌─────────┴─────────┐
+ │  CI/CD   ├──┼─▶│  Kafka Bus       │    │  Auto-Remediation │
+ │  Hooks   │  │  │  (10 topics)     │    │                   │
+ └──────────┘  │  │                  │    │  Safety Checks:   │
+ ┌──────────┐  │  └──┬───┬───┬──────┘    │  • Circuit Breaker│
+ │  Log     ├──┘     │   │   │           │  • Dry Run Mode   │
+ │  Files   │        │   │   │           │  • Max Retries    │
+ └──────────┘        ▼   ▼   ▼           │  • Cooldown Timer │
+              ┌──────┐ ┌──┐ ┌──────┐     └─────────▲─────────┘
+              │Anomly│ │RC│ │Capac.│               │
+              │Detect│ │A │ │Plan  │     ┌─────────┴─────────┐
+              └──┬───┘ └┬─┘ └──┬───┘     │  Incident         │
+                 │      │      │         │  Responder         │
+                 ▼      ▼      ▼         │                   │
+              ┌──────────────────┐       │  Severity Scoring  │
+              │  Intelligence    ├──────▶│  Event Correlation │
+              │  Correlation     │       │  LLM Analysis      │
+              └──────────────────┘       └───────────────────┘
+                                                  │
+                                    ┌─────────────┼─────────────┐
+                                    ▼             ▼             ▼
+                              ┌──────────┐ ┌──────────┐ ┌──────────┐
+                              │  Slack   │ │PagerDuty │ │Prometheus│
+                              │  Alert   │ │  Page    │ │ Metrics  │
+                              └──────────┘ └──────────┘ └──────────┘
+```
+
+### AI Intelligence Loop
+
+```
+              LLM-POWERED INTELLIGENCE & REMEDIATION
+ ═══════════════════════════════════════════════════════════
+
+     ┌──────────────────────────────────────────────────┐
+     │              ANOMALY DETECTION                    │
+     │                                                   │
+     │  Time Series ──▶ Z-Score ──▶ Threshold Check     │
+     │       │              │                            │
+     │       ▼              ▼                            │
+     │     EWMA          StdDev     Sensitivity:         │
+     │   Smoothing      Analysis    High  = 2.0 sigma    │
+     │       │              │       Med   = 3.0 sigma    │
+     │       ▼              ▼       Low   = 4.0 sigma    │
+     │  Trend Predict   Isolation                        │
+     │  (Regression)     Score      Score: 0.0 ──▶ 1.0   │
+     └───────────────────────┬──────────────────────────┘
+                             │ anomaly detected
+                             ▼
+     ┌──────────────────────────────────────────────────┐
+     │              INCIDENT CREATION                    │
+     │                                                   │
+     │  Score ≥ 0.9 ──▶ CRITICAL   ──▶ Page On-Call     │
+     │  Score ≥ 0.7 ──▶ HIGH       ──▶ Slack Alert      │
+     │  Score ≥ 0.5 ──▶ MEDIUM     ──▶ Dashboard        │
+     │  Score < 0.5 ──▶ LOW        ──▶ Log Only         │
+     │                                                   │
+     │  Correlate: group related events within window    │
+     └───────────────────────┬──────────────────────────┘
+                             │
+                             ▼
+     ┌──────────────────────────────────────────────────┐
+     │          ROOT CAUSE ANALYSIS (LLM)                │
+     │                                                   │
+     │  ┌────────────────┐    ┌───────────────────────┐ │
+     │  │ Dependency     │    │  AWS Bedrock           │ │
+     │  │ Graph          │    │  Claude / Titan         │ │
+     │  │                │    │                         │ │
+     │  │ ServiceA       │    │  Prompt:                │ │
+     │  │   └─▶ ServiceB │───▶│  "Analyze this incident│ │
+     │  │        └─▶ DB  │    │   with evidence..."    │ │
+     │  │                │    │                         │ │
+     │  │ Causal Chain   │    │  Response:              │ │
+     │  │ (DFS traversal)│    │  Root cause + fix       │ │
+     │  └────────────────┘    └───────────┬─────────────┘ │
+     └────────────────────────────────────┼────────────────┘
+                                          │
+                                          ▼
+     ┌──────────────────────────────────────────────────┐
+     │           AUTO-REMEDIATION ENGINE                  │
+     │                                                   │
+     │  ┌──────────┐    ┌────────────┐    ┌───────────┐ │
+     │  │ Strategy │    │  Safety    │    │  Execute  │ │
+     │  │ Select   │───▶│  Checks   │───▶│  Action   │ │
+     │  └──────────┘    └────────────┘    └───────────┘ │
+     │                                                   │
+     │  Actions:              Guards:                    │
+     │  • scale_deployment    • Circuit breaker          │
+     │  • restart_pods          (5 attempts/10 min)      │
+     │  • rollback_deploy     • Dry run mode             │
+     │  • drain_node          • Approval required        │
+     │  • failover_db         • Max retry limit          │
+     │  • toggle_feature      • Cooldown period          │
+     └──────────────────────────────────────────────────┘
+```
+
+### Deployment Architecture
+
+```
+              KUBERNETES DEPLOYMENT
+ ═══════════════════════════════════════════
+
+ ┌─────────────────────────────────────────────────────┐
+ │                  KUBERNETES CLUSTER                   │
+ │                                                       │
+ │  namespace: kronveil                                  │
+ │  ┌─────────────────────────────────────────────────┐ │
+ │  │  Deployment: kronveil-agent (replicas: 1)        │ │
+ │  │  ┌───────────────────────────────────────────┐   │ │
+ │  │  │  Pod                                      │   │ │
+ │  │  │  ┌──────────────────────────────────────┐ │   │ │
+ │  │  │  │  kronveil (Go binary)                │ │   │ │
+ │  │  │  │                                      │ │   │ │
+ │  │  │  │  REST API ──────────── :8080         │ │   │ │
+ │  │  │  │  Prometheus metrics ── :9090         │ │   │ │
+ │  │  │  │  gRPC API ──────────── :9091         │ │   │ │
+ │  │  │  │  Health: /healthz, /readyz           │ │   │ │
+ │  │  │  └──────────────────────────────────────┘ │   │ │
+ │  │  └───────────────────────────────────────────┘   │ │
+ │  └──────────────────────────────────────────────────┘ │
+ │                                                       │
+ │  ┌──────────────────┐  ┌──────────────────────────┐  │
+ │  │  Service          │  │  ServiceAccount           │  │
+ │  │  kronveil-agent   │  │  + ClusterRole            │  │
+ │  │  ClusterIP        │  │  + ClusterRoleBinding     │  │
+ │  │  8080, 9090, 9091 │  │                           │  │
+ │  └──────────────────┘  │  Permissions:              │  │
+ │                         │  • pods (get/list/watch)   │  │
+ │  ┌──────────────────┐  │  • nodes (get/list/watch)  │  │
+ │  │  ConfigMap        │  │  • events (get/list/watch) │  │
+ │  │  kronveil-config  │  │  • deployments (get/list/  │  │
+ │  │  config.yaml      │  │     watch/update)          │  │
+ │  └──────────────────┘  └──────────────────────────┘  │
+ │                                                       │
+ │  ┌─────────────────────────────────────────────────┐ │
+ │  │  Dashboard (Optional)                            │ │
+ │  │  React SPA ── nginx :8080 ── /api/* proxy        │ │
+ │  └─────────────────────────────────────────────────┘ │
+ └─────────────────────────────────────────────────────┘
+          │              │              │
+          ▼              ▼              ▼
+   ┌────────────┐ ┌────────────┐ ┌────────────┐
+   │ Kafka      │ │ AWS        │ │ Vault      │
+   │ Cluster    │ │ Bedrock    │ │ Server     │
+   └────────────┘ └────────────┘ └────────────┘
 ```
 
 ---
