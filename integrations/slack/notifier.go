@@ -90,7 +90,8 @@ func (n *Notifier) channelForSeverity(severity string) string {
 	return n.config.DefaultChannel
 }
 
-func (n *Notifier) buildIncidentBlocks(incident *engine.Incident) []map[string]interface{} {
+// BuildIncidentBlocks creates Slack Block Kit blocks for an incident notification.
+func (n *Notifier) BuildIncidentBlocks(incident *engine.Incident) []map[string]interface{} {
 	emoji := ":warning:"
 	switch incident.Severity {
 	case engine.SeverityCritical:

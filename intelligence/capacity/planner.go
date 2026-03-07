@@ -93,7 +93,7 @@ func (p *Planner) Name() string { return "capacity-planner" }
 func (p *Planner) Start(ctx context.Context) error {
 	p.mu.Lock()
 	p.running = true
-	ctx, p.cancel = context.WithCancel(ctx)
+	_, p.cancel = context.WithCancel(ctx)
 	p.mu.Unlock()
 	log.Printf("[capacity] Capacity planner started (forecast: %s, retention: %s)",
 		p.config.ForecastHorizon, p.config.DataRetention)

@@ -59,7 +59,7 @@ func (r *Responder) Name() string { return "incident-responder" }
 func (r *Responder) Start(ctx context.Context) error {
 	r.mu.Lock()
 	r.running = true
-	ctx, r.cancel = context.WithCancel(ctx)
+	_, r.cancel = context.WithCancel(ctx)
 	r.mu.Unlock()
 
 	log.Printf("[incident] Incident responder started (auto-remediate: %v, dry-run: %v)",

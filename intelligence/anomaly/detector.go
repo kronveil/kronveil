@@ -79,7 +79,7 @@ func (d *Detector) Name() string { return "anomaly-detector" }
 func (d *Detector) Start(ctx context.Context) error {
 	d.mu.Lock()
 	d.running = true
-	ctx, d.cancel = context.WithCancel(ctx)
+	_, d.cancel = context.WithCancel(ctx)
 	d.mu.Unlock()
 
 	log.Printf("[anomaly] Anomaly detector started (window: %d, threshold: %.1f, sensitivity: %s)",
