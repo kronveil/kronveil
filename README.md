@@ -451,7 +451,5 @@ Kronveil was born from real-world experience building and operating enterprise p
 ---
 
 <p align="center">
-  <b>Built by platform engineers. For platform engineers.</b><br/>
-  <i>kronveil.io</i> · <i>Discord</i> · <i>@kronveil</i> <em>(coming soon)</em><br/><br/>
   Developed by <a href="https://github.com/ramasankarmolleti">Ramasankar Molleti</a>
 </p>
