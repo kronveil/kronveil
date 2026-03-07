@@ -6,7 +6,6 @@ Kronveil is an open-source, AI-powered all-in-one platform observability agent �
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/kronveil/kronveil?style=social)](https://github.com/kronveil/kronveil)
-[![Discord](https://img.shields.io/discord/kronveil?label=Discord&logo=discord)](https://discord.gg/kronveil)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.26%2B-326CE5?logo=kubernetes)](https://kubernetes.io)
 [![AWS Bedrock](https://img.shields.io/badge/AWS-Bedrock-FF9900?logo=amazonaws)](https://aws.amazon.com/bedrock)
 
@@ -447,13 +446,12 @@ Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-Kronveil was born from real-world experience building and operating enterprise platforms at financial institutions processing trillions in daily transactions. Special thanks to the open-source communities behind Kubernetes, Apache Kafka, OpenTelemetry, and OPA.
+Kronveil was born from real-world experience building and operating enterprise platforms at scale. Special thanks to the open-source communities behind Kubernetes, Apache Kafka, OpenTelemetry, and OPA.
 
 ---
 
 <p align="center">
   <b>Built by platform engineers. For platform engineers.</b><br/>
-  <a href="https://kronveil.io">kronveil.io</a> · 
-  <a href="https://discord.gg/kronveil">Discord</a> · 
-  <a href="https://twitter.com/kronveil">@kronveil</a>
+  <i>kronveil.io</i> · <i>Discord</i> · <i>@kronveil</i> <em>(coming soon)</em><br/><br/>
+  Developed by <a href="https://github.com/ramasankarmolleti">Ramasankar Molleti</a>
 </p>
