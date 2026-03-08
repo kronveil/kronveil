@@ -451,5 +451,5 @@ Kronveil was born from real-world experience building and operating enterprise p
 ---
 
 <p align="center">
-  Developed by <a href="https://github.com/ramasankarmolleti">Ramasankar Molleti</a>
+  Developed by <a href="https://github.com/sankar276">Ramasankar Molleti</a>
 </p>
