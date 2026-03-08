@@ -33,12 +33,13 @@ func DefaultConfig() Config {
 
 // Detector performs anomaly detection on telemetry signals.
 type Detector struct {
-	config   Config
-	mu       sync.RWMutex
-	signals  map[string]*SignalState
-	anomalyCh chan *engine.Anomaly
-	running  bool
-	cancel   context.CancelFunc
+	config            Config
+	mu                sync.RWMutex
+	signals           map[string]*SignalState
+	anomalyCh         chan *engine.Anomaly
+	detectedAnomalies []*engine.Anomaly
+	running           bool
+	cancel            context.CancelFunc
 }
 
 // SignalState tracks the state of a monitored signal.
@@ -108,6 +109,9 @@ func (d *Detector) Analyze(ctx context.Context, event *engine.TelemetryEvent) er
 		key := fmt.Sprintf("%s.%s", event.Source, signalName)
 		anomaly := d.analyzeSignal(key, value, event)
 		if anomaly != nil {
+			d.mu.Lock()
+			d.detectedAnomalies = append(d.detectedAnomalies, anomaly)
+			d.mu.Unlock()
 			select {
 			case d.anomalyCh <- anomaly:
 			default:
@@ -134,6 +138,15 @@ func (d *Detector) Health() engine.ComponentHealth {
 // Anomalies returns the channel of detected anomalies.
 func (d *Detector) Anomalies() <-chan *engine.Anomaly {
 	return d.anomalyCh
+}
+
+// ListAnomalies returns all detected anomalies.
+func (d *Detector) ListAnomalies() []*engine.Anomaly {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	result := make([]*engine.Anomaly, len(d.detectedAnomalies))
+	copy(result, d.detectedAnomalies)
+	return result
 }
 
 func (d *Detector) analyzeSignal(key string, value float64, event *engine.TelemetryEvent) *engine.Anomaly {

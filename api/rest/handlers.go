@@ -2,7 +2,13 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
+	"math/rand"
 	"net/http"
+	"time"
+
+	"github.com/kronveil/kronveil/core/engine"
 )
 
 type apiResponse struct {
@@ -86,6 +92,10 @@ func (s *Server) handleResolveIncident(w http.ResponseWriter, r *http.Request, i
 }
 
 func (s *Server) handleListAnomalies(w http.ResponseWriter, r *http.Request) {
+	if s.detector != nil {
+		writeJSON(w, http.StatusOK, s.detector.ListAnomalies())
+		return
+	}
 	writeJSON(w, http.StatusOK, []interface{}{})
 }
 
@@ -105,6 +115,116 @@ func (s *Server) handleListCollectors(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleTestInject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST required")
+		return
+	}
+
+	mode := r.URL.Query().Get("mode")
+
+	if mode == "burst" {
+		s.handleTestInjectBurst(w, r)
+		return
+	}
+
+	var event engine.TelemetryEvent
+	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid event: "+err.Error())
+		return
+	}
+
+	if event.ID == "" {
+		event.ID = fmt.Sprintf("test-%d", time.Now().UnixNano())
+	}
+	if event.Timestamp.IsZero() {
+		event.Timestamp = time.Now()
+	}
+	if event.Source == "" {
+		event.Source = "test"
+	}
+
+	for _, mod := range s.engine.Registry().Modules() {
+		if err := mod.Analyze(r.Context(), &event); err != nil {
+			log.Printf("[api] Module %s analysis error: %v", mod.Name(), err)
+		}
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"status":   "injected",
+		"event_id": event.ID,
+	})
+}
+
+func (s *Server) handleTestInjectBurst(w http.ResponseWriter, r *http.Request) {
+	source := "test-app"
+	signal := "cpu_usage"
+
+	var req struct {
+		Source string `json:"source"`
+		Signal string `json:"signal"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	if req.Source != "" {
+		source = req.Source
+	}
+	if req.Signal != "" {
+		signal = req.Signal
+	}
+
+	injected := 0
+	// Seed with 35 normal events (values around 50 with small variance).
+	for i := 0; i < 35; i++ {
+		event := &engine.TelemetryEvent{
+			ID:        fmt.Sprintf("burst-%d-%d", i, time.Now().UnixNano()),
+			Source:    source,
+			Type:      "metric",
+			Timestamp: time.Now(),
+			Severity:  engine.SeverityInfo,
+			Payload:   map[string]interface{}{signal: 50.0 + rand.Float64()*4.0 - 2.0},
+		}
+		for _, mod := range s.engine.Registry().Modules() {
+			_ = mod.Analyze(r.Context(), event)
+		}
+		injected++
+	}
+
+	// Inject spike event (value ~200, well above 3 sigma from mean of ~50).
+	spikeEvent := &engine.TelemetryEvent{
+		ID:        fmt.Sprintf("burst-spike-%d", time.Now().UnixNano()),
+		Source:    source,
+		Type:      "metric",
+		Timestamp: time.Now(),
+		Severity:  engine.SeverityCritical,
+		Payload:   map[string]interface{}{signal: 200.0},
+	}
+	for _, mod := range s.engine.Registry().Modules() {
+		_ = mod.Analyze(r.Context(), spikeEvent)
+	}
+	injected++
+
+	// Collect results.
+	var anomalies []*engine.Anomaly
+	if s.detector != nil {
+		anomalies = s.detector.ListAnomalies()
+	}
+	var incidents []*engine.Incident
+	if s.responder != nil {
+		incidents = s.responder.ListIncidents("")
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":          "burst_complete",
+		"events_injected": injected,
+		"anomalies_found": len(anomalies),
+		"incidents_created": len(incidents),
+		"anomalies":       anomalies,
+		"incidents":       incidents,
+	})
 }
 
 func (s *Server) handleMetricsSummary(w http.ResponseWriter, r *http.Request) {

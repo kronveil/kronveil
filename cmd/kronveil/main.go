@@ -118,7 +118,7 @@ func main() {
 	apiServer := rest.NewServer(rest.Config{
 		Port:   cfg.API.RESTPort,
 		APIKey: cfg.API.APIKey,
-	}, eng, responder)
+	}, eng, responder, detector)
 	if err := apiServer.Start(); err != nil {
 		log.Fatalf("Failed to start REST API: %v", err)
 	}

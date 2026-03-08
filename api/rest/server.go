@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kronveil/kronveil/core/engine"
+	"github.com/kronveil/kronveil/intelligence/anomaly"
 	"github.com/kronveil/kronveil/intelligence/incident"
 )
 
@@ -23,16 +24,18 @@ type Server struct {
 	config    Config
 	engine    *engine.Engine
 	responder *incident.Responder
+	detector  *anomaly.Detector
 	server    *http.Server
 	mux       *http.ServeMux
 }
 
 // NewServer creates a new REST API server.
-func NewServer(config Config, eng *engine.Engine, resp *incident.Responder) *Server {
+func NewServer(config Config, eng *engine.Engine, resp *incident.Responder, det *anomaly.Detector) *Server {
 	s := &Server{
 		config:    config,
 		engine:    eng,
 		responder: resp,
+		detector:  det,
 		mux:       http.NewServeMux(),
 	}
 
@@ -48,6 +51,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/anomalies", s.withAuth(s.handleListAnomalies))
 	s.mux.HandleFunc("/api/v1/collectors", s.withAuth(s.handleListCollectors))
 	s.mux.HandleFunc("/api/v1/metrics/summary", s.withAuth(s.handleMetricsSummary))
+	s.mux.HandleFunc("/api/v1/test/inject", s.withAuth(s.handleTestInject))
 }
 
 // handleIncidents dispatches /api/v1/incidents requests.
