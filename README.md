@@ -35,7 +35,7 @@ Kronveil combines:
 | 🏗️ **Capacity Intelligence** | AI-driven forecasting and right-sizing recommendations |
 | 📋 **Policy-as-Code Engine** | OPA-based governance enforced across all environments |
 | 🔄 **GitOps Native** | Full Flux/ArgoCD integration — infrastructure as observable code |
-| 🔐 **Secret-Aware** | Deep HashiCorp Vault and External Secrets Operator integration |
+| 🔐 **Secret-Aware** | AWS Secrets Manager + HashiCorp Vault integration with rotation monitoring |
 | 💬 **ChatOps** | Slack/Teams integration for natural language incident management |
 
 ---
@@ -109,7 +109,7 @@ Kronveil combines:
 │  └─────────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────────┐ │
-│  │  SECURITY: HashiCorp Vault · Secret Rotation · Certificate Lifecycle   │ │
+│  │  SECURITY: AWS Secrets Manager · HashiCorp Vault · Secret Rotation     │ │
 │  └─────────────────────────────────────────────────────────────────────────┘ │
 │                                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                      │
@@ -279,10 +279,10 @@ Kronveil combines:
  └─────────────────────────────────────────────────────┘
           │              │              │
           ▼              ▼              ▼
-   ┌────────────┐ ┌────────────┐ ┌────────────┐
-   │ Kafka      │ │ AWS        │ │ Vault      │
-   │ Cluster    │ │ Bedrock    │ │ Server     │
-   └────────────┘ └────────────┘ └────────────┘
+   ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐
+   │ Kafka      │ │ AWS        │ │ AWS Secrets│ │ Vault      │
+   │ Cluster    │ │ Bedrock    │ │ Manager   │ │ Server     │
+   └────────────┘ └────────────┘ └────────────┘ └────────────┘
 ```
 
 ---
@@ -349,6 +349,7 @@ kronveil/
 │
 ├── integrations/
 │   ├── aws-bedrock/           # LLM backbone
+│   ├── aws-secrets/           # AWS Secrets Manager integration
 │   ├── hashicorp-vault/       # Secret-aware monitoring
 │   ├── pagerduty/             # Alerting & on-call
 │   ├── slack/                 # ChatOps interface
@@ -388,7 +389,7 @@ kronveil/
 </tr>
 <tr>
 <td><b>Security</b></td>
-<td>HashiCorp Vault, Falco, OPA Gatekeeper, Sysdig</td>
+<td>AWS Secrets Manager, HashiCorp Vault, Falco, OPA Gatekeeper</td>
 </tr>
 <tr>
 <td><b>GitOps</b></td>
@@ -431,6 +432,7 @@ make test
 
 ### Areas Actively Seeking Contributors
 - 🔌 New collector integrations (Azure Monitor, GCP Ops)
+- 🔐 Multi-cloud secret management (Azure Key Vault, GCP Secret Manager — coming soon)
 - 🧠 LLM prompt engineering for better root-cause analysis
 - 📊 Dashboard widgets and visualizations
 - 🌐 Internationalization (i18n)

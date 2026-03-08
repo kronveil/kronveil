@@ -96,16 +96,25 @@ type RemediationConfig struct {
 }
 
 type IntegrationsConfig struct {
-	Vault     VaultIntegrationConfig     `yaml:"vault" json:"vault"`
-	Slack     SlackIntegrationConfig     `yaml:"slack" json:"slack"`
-	PagerDuty PagerDutyIntegrationConfig `yaml:"pagerduty" json:"pagerduty"`
-	Prometheus PrometheusIntegrationConfig `yaml:"prometheus" json:"prometheus"`
+	Vault        VaultIntegrationConfig        `yaml:"vault" json:"vault"`
+	AWSSecrets   AWSSecretsIntegrationConfig   `yaml:"aws_secrets" json:"aws_secrets"`
+	Slack        SlackIntegrationConfig        `yaml:"slack" json:"slack"`
+	PagerDuty    PagerDutyIntegrationConfig    `yaml:"pagerduty" json:"pagerduty"`
+	Prometheus   PrometheusIntegrationConfig   `yaml:"prometheus" json:"prometheus"`
 }
 
 type VaultIntegrationConfig struct {
 	Enabled    bool   `yaml:"enabled" json:"enabled"`
 	Address    string `yaml:"address" json:"address"`
 	AuthMethod string `yaml:"auth_method" json:"auth_method"`
+}
+
+type AWSSecretsIntegrationConfig struct {
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	Region         string `yaml:"region" json:"region"`
+	SecretPrefix   string `yaml:"secret_prefix" json:"secret_prefix"`
+	RotationWindow string `yaml:"rotation_window" json:"rotation_window"`
+	CacheEnabled   bool   `yaml:"cache_enabled" json:"cache_enabled"`
 }
 
 type SlackIntegrationConfig struct {

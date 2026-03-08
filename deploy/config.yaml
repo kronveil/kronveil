@@ -57,6 +57,12 @@ integrations:
     enabled: false
     address: https://vault.example.com
     auth_method: kubernetes
+  aws_secrets:
+    enabled: false
+    region: us-east-1
+    secret_prefix: kronveil/
+    rotation_window: 720h  # 30 days
+    cache_enabled: true
   slack:
     enabled: false
     bot_token: ""
