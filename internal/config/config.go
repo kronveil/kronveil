@@ -185,8 +185,8 @@ func DefaultConfig() *Config {
 				ZScoreThreshold: 3.0,
 			},
 			Remediation: RemediationConfig{
-				AutoRemediate: true,
-				DryRun:        false,
+				AutoRemediate: false,
+				DryRun:        true,
 				MaxRetries:    3,
 			},
 		},
@@ -199,7 +199,7 @@ func DefaultConfig() *Config {
 			OpenTelemetry: OTelIntegrationConfig{
 				Enabled:        false,
 				Endpoint:       "localhost:4317",
-				Insecure:       true,
+				Insecure:       false,
 				ExportInterval: "30s",
 			},
 		},

@@ -15,8 +15,12 @@ import (
 
 // Config holds REST API server configuration.
 type Config struct {
-	Port   int    `yaml:"port" json:"port"`
-	APIKey string `yaml:"api_key" json:"api_key"`
+	Port           int      `yaml:"port" json:"port"`
+	APIKey         string   `yaml:"api_key" json:"api_key"`
+	AllowedOrigins []string `yaml:"allowed_origins" json:"allowed_origins"`
+	MaxBodyBytes   int64    `yaml:"max_body_bytes" json:"max_body_bytes"`
+	RateLimit      float64  `yaml:"rate_limit" json:"rate_limit"`
+	RateBurst      int      `yaml:"rate_burst" json:"rate_burst"`
 }
 
 // Server is the REST API server for Kronveil.
@@ -27,6 +31,8 @@ type Server struct {
 	detector  *anomaly.Detector
 	server    *http.Server
 	mux       *http.ServeMux
+	limiter   *RateLimiter
+	startErr  chan error
 }
 
 // NewServer creates a new REST API server.
@@ -38,6 +44,18 @@ func NewServer(config Config, eng *engine.Engine, resp *incident.Responder, det 
 		detector:  det,
 		mux:       http.NewServeMux(),
 	}
+
+	// Apply safe defaults.
+	if s.config.MaxBodyBytes <= 0 {
+		s.config.MaxBodyBytes = 1 << 20 // 1MB
+	}
+	if s.config.RateLimit <= 0 {
+		s.config.RateLimit = 100 // 100 req/s
+	}
+	if s.config.RateBurst <= 0 {
+		s.config.RateBurst = 200
+	}
+	s.limiter = NewRateLimiter(s.config.RateLimit, s.config.RateBurst)
 
 	s.registerRoutes()
 	return s
@@ -88,23 +106,34 @@ func (s *Server) handleIncidentByID(w http.ResponseWriter, r *http.Request) {
 
 // Start begins serving the REST API.
 func (s *Server) Start() error {
+	handler := s.withCORS(s.withRateLimit(s.withBodyLimit(s.withLogging(s.mux))))
+
 	s.server = &http.Server{
-		Addr:         fmt.Sprintf(":%d", s.config.Port),
-		Handler:      s.withCORS(s.withLogging(s.mux)),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:           fmt.Sprintf(":%d", s.config.Port),
+		Handler:        handler,
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   15 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
 	log.Printf("[api] REST API server listening on :%d", s.config.Port)
 
+	s.startErr = make(chan error, 1)
 	go func() {
 		if err := s.server.ListenAndServe(); err != http.ErrServerClosed {
 			log.Printf("[api] REST server error: %v", err)
+			s.startErr <- err
 		}
+		close(s.startErr)
 	}()
 
 	return nil
+}
+
+// StartErr returns a channel that receives any server startup error.
+func (s *Server) StartErr() <-chan error {
+	return s.startErr
 }
 
 // Stop gracefully shuts down the REST API server.

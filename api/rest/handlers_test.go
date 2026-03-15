@@ -150,8 +150,8 @@ func TestHandleAckIncident_NilResponder(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.handleAckIncident(w, req, "INC-0001")
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", w.Code)
 	}
 }
 
@@ -175,8 +175,8 @@ func TestHandleResolveIncident_NilResponder(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.handleResolveIncident(w, req, "INC-0001")
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", w.Code)
 	}
 }
 
@@ -456,6 +456,19 @@ func TestWriteJSON(t *testing.T) {
 	}
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestHandleListIncidents_InvalidStatus(t *testing.T) {
+	s := newTestApp()
+	defer func() { _ = s.engine.Stop() }()
+
+	req := httptest.NewRequest("GET", "/api/v1/incidents?status=invalid", nil)
+	w := httptest.NewRecorder()
+	s.handleListIncidents(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid status, got %d", w.Code)
 	}
 }
 

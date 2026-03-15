@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,31 +14,87 @@ func testServer(apiKey string) *Server {
 	}
 }
 
-func TestWithCORS_Headers(t *testing.T) {
-	s := testServer("")
+func testServerWithOrigins(origins []string) *Server {
+	return &Server{
+		config: Config{AllowedOrigins: origins},
+	}
+}
+
+func TestWithCORS_AllowedOrigin(t *testing.T) {
+	s := testServerWithOrigins([]string{"https://app.kronveil.io"})
 	handler := s.withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
 	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Origin", "https://app.kronveil.io")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Error("expected CORS Allow-Origin header")
+	if w.Header().Get("Access-Control-Allow-Origin") != "https://app.kronveil.io" {
+		t.Error("expected matching CORS Allow-Origin header")
 	}
 	if w.Header().Get("Access-Control-Allow-Methods") == "" {
 		t.Error("expected CORS Allow-Methods header")
 	}
 }
 
-func TestWithCORS_OptionsReturns204(t *testing.T) {
+func TestWithCORS_DisallowedOrigin(t *testing.T) {
+	s := testServerWithOrigins([]string{"https://app.kronveil.io"})
+	handler := s.withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Origin", "https://evil.com")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Error("disallowed origin should not get CORS header")
+	}
+}
+
+func TestWithCORS_WildcardOrigin(t *testing.T) {
+	s := testServerWithOrigins([]string{"*"})
+	handler := s.withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Origin", "https://anything.com")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Header().Get("Access-Control-Allow-Origin") != "https://anything.com" {
+		t.Error("wildcard should allow any origin")
+	}
+}
+
+func TestWithCORS_NoOriginsConfigured(t *testing.T) {
 	s := testServer("")
 	handler := s.withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Origin", "https://test.com")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Error("no origins configured should block all")
+	}
+}
+
+func TestWithCORS_OptionsReturns204(t *testing.T) {
+	s := testServerWithOrigins([]string{"*"})
+	handler := s.withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
 	req := httptest.NewRequest("OPTIONS", "/test", nil)
+	req.Header.Set("Origin", "https://test.com")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -157,6 +214,53 @@ func TestRateLimiter_PerClientIsolation(t *testing.T) {
 	// client2 should still be allowed.
 	if !rl.Allow("client2") {
 		t.Error("client2 should not be affected by client1's rate limit")
+	}
+}
+
+func TestWithBodyLimit(t *testing.T) {
+	s := &Server{config: Config{MaxBodyBytes: 10}}
+	handler := s.withBodyLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, 100)
+		_, err := r.Body.Read(buf)
+		if err != nil && err.Error() != "EOF" {
+			http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Small body should pass.
+	req := httptest.NewRequest("POST", "/test", bytes.NewReader([]byte("small")))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("small body: expected 200, got %d", w.Code)
+	}
+}
+
+func TestWithRateLimit(t *testing.T) {
+	s := &Server{
+		config:  Config{RateLimit: 1, RateBurst: 1},
+		limiter: NewRateLimiter(1, 1),
+	}
+	handler := s.withRateLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// First request allowed.
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.RemoteAddr = "1.2.3.4:1234"
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("first request: expected 200, got %d", w.Code)
+	}
+
+	// Second request should be rate limited.
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, req)
+	if w2.Code != http.StatusTooManyRequests {
+		t.Errorf("second request: expected 429, got %d", w2.Code)
 	}
 }
 

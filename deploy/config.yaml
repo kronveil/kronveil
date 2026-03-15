@@ -48,8 +48,8 @@ intelligence:
     window_size: 300
     zscore_threshold: 3.0
   remediation:
-    auto_remediate: true
-    dry_run: false         # Set to true for testing
+    auto_remediate: false  # Enable with caution; always test with dry_run first
+    dry_run: true           # Set to false only after validating remediation strategies
     max_retries: 3
 
 integrations:
@@ -80,7 +80,7 @@ integrations:
   opentelemetry:
     enabled: false
     endpoint: "localhost:4317"
-    insecure: true
+    insecure: false         # Set to true only for local development
     export_interval: "30s"
 
 api:

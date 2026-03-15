@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -40,6 +41,19 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("Invalid configuration: %v", err)
 	}
+
+	// Initialize structured logging.
+	var logHandler slog.Handler
+	if cfg.Agent.LogFormat == "json" {
+		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: parseSlogLevel(cfg.Agent.LogLevel),
+		})
+	} else {
+		logHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: parseSlogLevel(cfg.Agent.LogLevel),
+		})
+	}
+	slog.SetDefault(slog.New(logHandler))
 
 	// Create event bus.
 	bus, err := eventbus.NewKafkaEventBus(eventbus.KafkaConfig{
@@ -189,4 +203,17 @@ func main() {
 	}
 
 	log.Println("Kronveil agent stopped. Goodbye.")
+}
+
+func parseSlogLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }

@@ -20,15 +20,18 @@ type Config struct {
 }
 
 // DefaultConfig returns default incident responder configuration.
+// DryRun defaults to true for safety — explicitly set to false for production.
 func DefaultConfig() Config {
 	return Config{
 		CorrelationWindow: 5 * time.Minute,
-		AutoRemediate:     true,
+		AutoRemediate:     false,
 		EscalationDelay:   10 * time.Minute,
 		MaxRetries:        3,
-		DryRun:            false,
+		DryRun:            true,
 	}
 }
+
+const maxIncidents = 10000
 
 // Responder manages incident lifecycle and auto-remediation.
 type Responder struct {
@@ -169,6 +172,12 @@ func (r *Responder) createIncident(ctx context.Context, event *engine.TelemetryE
 	}
 
 	r.incidents[id] = incident
+
+	// Evict oldest resolved incidents if over capacity.
+	if len(r.incidents) > maxIncidents {
+		r.evictResolved()
+	}
+
 	if r.metrics != nil {
 		r.metrics.RecordIncidentCreated()
 	}
@@ -264,6 +273,23 @@ func (r *Responder) GetIncident(id string) (*engine.Incident, bool) {
 // Incidents returns the channel of new incidents.
 func (r *Responder) Incidents() <-chan *engine.Incident {
 	return r.incidentCh
+}
+
+// evictResolved removes the oldest resolved incidents. Must be called with r.mu held.
+func (r *Responder) evictResolved() {
+	var oldestID string
+	var oldestTime time.Time
+	for id, inc := range r.incidents {
+		if inc.Status == engine.StatusResolved {
+			if oldestID == "" || inc.CreatedAt.Before(oldestTime) {
+				oldestID = id
+				oldestTime = inc.CreatedAt
+			}
+		}
+	}
+	if oldestID != "" {
+		delete(r.incidents, oldestID)
+	}
 }
 
 func (r *Responder) eventsCorrelate(event *engine.TelemetryEvent, incident *engine.Incident) bool {

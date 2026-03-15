@@ -31,6 +31,8 @@ func DefaultConfig() Config {
 	}
 }
 
+const maxDetectedAnomalies = 10000
+
 // Detector performs anomaly detection on telemetry signals.
 type Detector struct {
 	config            Config
@@ -120,6 +122,10 @@ func (d *Detector) Analyze(ctx context.Context, event *engine.TelemetryEvent) er
 			}
 			d.mu.Lock()
 			d.detectedAnomalies = append(d.detectedAnomalies, anomaly)
+			// Cap to prevent unbounded memory growth.
+			if len(d.detectedAnomalies) > maxDetectedAnomalies {
+				d.detectedAnomalies = d.detectedAnomalies[len(d.detectedAnomalies)-maxDetectedAnomalies:]
+			}
 			d.mu.Unlock()
 			select {
 			case d.anomalyCh <- anomaly:

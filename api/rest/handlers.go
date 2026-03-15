@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/kronveil/kronveil/core/engine"
@@ -44,12 +45,24 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.engine.Status())
 }
 
+// validIncidentStatuses are the allowed values for the status filter.
+var validIncidentStatuses = map[string]bool{
+	"":             true, // no filter
+	"active":       true,
+	"acknowledged": true,
+	"resolved":     true,
+}
+
 func (s *Server) handleListIncidents(w http.ResponseWriter, r *http.Request) {
 	if s.responder == nil {
 		writeJSON(w, http.StatusOK, []interface{}{})
 		return
 	}
 	status := r.URL.Query().Get("status")
+	if !validIncidentStatuses[status] {
+		writeError(w, http.StatusBadRequest, "invalid status filter: must be active, acknowledged, or resolved")
+		return
+	}
 	incidents := s.responder.ListIncidents(status)
 	writeJSON(w, http.StatusOK, incidents)
 }
@@ -69,11 +82,15 @@ func (s *Server) handleGetIncident(w http.ResponseWriter, r *http.Request, id st
 
 func (s *Server) handleAckIncident(w http.ResponseWriter, r *http.Request, id string) {
 	if s.responder == nil {
-		writeError(w, http.StatusNotFound, "incident not found")
+		writeError(w, http.StatusServiceUnavailable, "incident responder not available")
 		return
 	}
 	if err := s.responder.AcknowledgeIncident(id); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, err.Error())
+		} else {
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "acknowledged"})
@@ -81,11 +98,15 @@ func (s *Server) handleAckIncident(w http.ResponseWriter, r *http.Request, id st
 
 func (s *Server) handleResolveIncident(w http.ResponseWriter, r *http.Request, id string) {
 	if s.responder == nil {
-		writeError(w, http.StatusNotFound, "incident not found")
+		writeError(w, http.StatusServiceUnavailable, "incident responder not available")
 		return
 	}
 	if err := s.responder.ResolveIncident(id); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, err.Error())
+		} else {
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "resolved"})
@@ -167,7 +188,10 @@ func (s *Server) handleTestInjectBurst(w http.ResponseWriter, r *http.Request) {
 		Signal string `json:"signal"`
 	}
 	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			// Non-fatal: use defaults if body is empty or malformed.
+			log.Printf("[api] burst inject: ignoring malformed body: %v", err)
+		}
 	}
 	if req.Source != "" {
 		source = req.Source
