@@ -118,41 +118,51 @@ func (e *Exporter) Initialize(ctx context.Context) error {
 		otelmetric.WithDescription("Total number of policy violations"))
 
 	// Register observable gauges with callbacks.
-	meter.Float64ObservableGauge("kronveil.mttr.seconds",
+	if _, err := meter.Float64ObservableGauge("kronveil.mttr.seconds",
 		otelmetric.WithDescription("Mean time to recovery in seconds"),
 		otelmetric.WithFloat64Callback(func(_ context.Context, o otelmetric.Float64Observer) error {
 			o.Observe(float64FromBits(e.mttrVal.Load()))
 			return nil
 		}),
-	)
-	meter.Float64ObservableGauge("kronveil.uptime.seconds",
+	); err != nil {
+		return fmt.Errorf("failed to create mttr gauge: %w", err)
+	}
+	if _, err := meter.Float64ObservableGauge("kronveil.uptime.seconds",
 		otelmetric.WithDescription("Agent uptime in seconds"),
 		otelmetric.WithFloat64Callback(func(_ context.Context, o otelmetric.Float64Observer) error {
 			o.Observe(float64FromBits(e.uptimeVal.Load()))
 			return nil
 		}),
-	)
-	meter.Int64ObservableGauge("kronveil.components.healthy",
+	); err != nil {
+		return fmt.Errorf("failed to create uptime gauge: %w", err)
+	}
+	if _, err := meter.Int64ObservableGauge("kronveil.components.healthy",
 		otelmetric.WithDescription("Number of healthy components"),
 		otelmetric.WithInt64Callback(func(_ context.Context, o otelmetric.Int64Observer) error {
 			o.Observe(e.healthyVal.Load())
 			return nil
 		}),
-	)
-	meter.Int64ObservableGauge("kronveil.components.degraded",
+	); err != nil {
+		return fmt.Errorf("failed to create healthy components gauge: %w", err)
+	}
+	if _, err := meter.Int64ObservableGauge("kronveil.components.degraded",
 		otelmetric.WithDescription("Number of degraded components"),
 		otelmetric.WithInt64Callback(func(_ context.Context, o otelmetric.Int64Observer) error {
 			o.Observe(e.degradedVal.Load())
 			return nil
 		}),
-	)
-	meter.Int64ObservableGauge("kronveil.components.critical",
+	); err != nil {
+		return fmt.Errorf("failed to create degraded components gauge: %w", err)
+	}
+	if _, err := meter.Int64ObservableGauge("kronveil.components.critical",
 		otelmetric.WithDescription("Number of critical components"),
 		otelmetric.WithInt64Callback(func(_ context.Context, o otelmetric.Int64Observer) error {
 			o.Observe(e.criticalVal.Load())
 			return nil
 		}),
-	)
+	); err != nil {
+		return fmt.Errorf("failed to create critical components gauge: %w", err)
+	}
 
 	e.healthy.Store(true)
 	log.Printf("[otel] OpenTelemetry exporter initialized (endpoint: %s, interval: %s)",
