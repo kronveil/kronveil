@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/kronveil/kronveil/core/engine"
@@ -157,19 +156,6 @@ func convertIncident(inc *engine.Incident) *IncidentProto {
 
 // --- gRPC ServiceDesc registration (avoids protoc dependency) ---
 
-// jsonCodec is a simple codec that uses JSON for marshaling/unmarshaling.
-type jsonCodec struct{}
-
-func (jsonCodec) Marshal(v interface{}) ([]byte, error) {
-	return json.Marshal(v)
-}
-
-func (jsonCodec) Unmarshal(data []byte, v interface{}) error {
-	return json.Unmarshal(data, v)
-}
-
-func (jsonCodec) Name() string { return "json" }
-
 // RegisterKronveilService registers the Kronveil gRPC service handlers on the server.
 func RegisterKronveilService(s *grpclib.Server, svc *KronveilService) {
 	s.RegisterService(&kronveilServiceDesc, svc)
@@ -320,8 +306,3 @@ func containsStr(slice []string, s string) bool {
 	return false
 }
 
-// Ensure KronveilService message types implement the gRPC codec interface.
-func init() {
-	// Register JSON codec as a fallback for clients using JSON encoding.
-	_ = fmt.Sprintf("kronveil gRPC service initialized")
-}
