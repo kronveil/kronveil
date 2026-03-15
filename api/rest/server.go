@@ -2,9 +2,12 @@ package rest
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -21,6 +24,10 @@ type Config struct {
 	MaxBodyBytes   int64    `yaml:"max_body_bytes" json:"max_body_bytes"`
 	RateLimit      float64  `yaml:"rate_limit" json:"rate_limit"`
 	RateBurst      int      `yaml:"rate_burst" json:"rate_burst"`
+	TLSCertFile    string   `yaml:"tls_cert_file" json:"tls_cert_file"`
+	TLSKeyFile     string   `yaml:"tls_key_file" json:"tls_key_file"`
+	TLSCAFile      string   `yaml:"tls_ca_file" json:"tls_ca_file"`
+	MutualTLS      bool     `yaml:"mutual_tls" json:"mutual_tls"`
 }
 
 // Server is the REST API server for Kronveil.
@@ -117,6 +124,26 @@ func (s *Server) Start() error {
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
+	// Configure TLS if cert/key provided.
+	if s.config.TLSCertFile != "" && s.config.TLSKeyFile != "" {
+		tlsConfig, err := buildTLSConfig(s.config.TLSCertFile, s.config.TLSKeyFile, s.config.TLSCAFile, s.config.MutualTLS)
+		if err != nil {
+			return fmt.Errorf("failed to configure TLS: %w", err)
+		}
+		s.server.TLSConfig = tlsConfig
+		log.Printf("[api] REST API server listening on :%d (TLS enabled, mTLS: %v)", s.config.Port, s.config.MutualTLS)
+
+		s.startErr = make(chan error, 1)
+		go func() {
+			if err := s.server.ListenAndServeTLS(s.config.TLSCertFile, s.config.TLSKeyFile); err != http.ErrServerClosed {
+				log.Printf("[api] REST server error: %v", err)
+				s.startErr <- err
+			}
+			close(s.startErr)
+		}()
+		return nil
+	}
+
 	log.Printf("[api] REST API server listening on :%d", s.config.Port)
 
 	s.startErr = make(chan error, 1)
@@ -129,6 +156,34 @@ func (s *Server) Start() error {
 	}()
 
 	return nil
+}
+
+// buildTLSConfig creates a TLS configuration with optional mTLS support.
+func buildTLSConfig(certFile, keyFile, caFile string, mutualTLS bool) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		},
+	}
+
+	if mutualTLS && caFile != "" {
+		caCert, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA file %s: %w", caFile, err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA certificate")
+		}
+		tlsConfig.ClientCAs = caCertPool
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	return tlsConfig, nil
 }
 
 // StartErr returns a channel that receives any server startup error.

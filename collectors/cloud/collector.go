@@ -75,6 +75,10 @@ func New(config Config) (*Collector, error) {
 	switch config.Provider {
 	case ProviderAWS:
 		provider = NewAWSProvider(config.Regions)
+	case ProviderAzure:
+		provider = NewAzureProvider(config.Regions)
+	case ProviderGCP:
+		provider = NewGCPProvider(config.Regions)
 	default:
 		return nil, fmt.Errorf("unsupported cloud provider: %s", config.Provider)
 	}

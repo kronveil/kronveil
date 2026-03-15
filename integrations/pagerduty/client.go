@@ -60,6 +60,11 @@ func (c *Client) TriggerIncident(ctx context.Context, incident *engine.Incident)
 	severity := mapSeverity(incident.Severity)
 	dedupKey := fmt.Sprintf("kronveil-%s", incident.ID)
 
+	component := "unknown"
+	if len(incident.AffectedResources) > 0 {
+		component = incident.AffectedResources[0]
+	}
+
 	payload := map[string]interface{}{
 		"routing_key":  c.config.RoutingKey,
 		"event_action": "trigger",
@@ -68,7 +73,7 @@ func (c *Client) TriggerIncident(ctx context.Context, incident *engine.Incident)
 			"summary":    fmt.Sprintf("[Kronveil] %s", incident.Title),
 			"severity":   severity,
 			"source":     "kronveil-agent",
-			"component":  incident.AffectedResources[0],
+			"component":  component,
 			"group":      "infrastructure",
 			"class":      "incident",
 			"timestamp":  incident.CreatedAt.Format(time.RFC3339),
@@ -135,6 +140,62 @@ func (c *Client) sendEvent(ctx context.Context, payload map[string]interface{}) 
 	action := payload["event_action"].(string)
 	log.Printf("[pagerduty] Event sent: %s (dedup: %s)", action, payload["dedup_key"])
 	return nil
+}
+
+// NotifyIncident implements engine.Notifier — triggers a PagerDuty event for an incident.
+func (c *Client) NotifyIncident(ctx context.Context, incident *engine.Incident) error {
+	return c.TriggerIncident(ctx, incident)
+}
+
+// NotifyAnomaly implements engine.Notifier — triggers a PagerDuty event for an anomaly.
+func (c *Client) NotifyAnomaly(ctx context.Context, a *engine.Anomaly) error {
+	severity := mapSeverity(a.Severity)
+	payload := map[string]interface{}{
+		"routing_key":  c.config.RoutingKey,
+		"event_action": "trigger",
+		"dedup_key":    fmt.Sprintf("kronveil-anomaly-%s", a.ID),
+		"payload": map[string]interface{}{
+			"summary":  fmt.Sprintf("[Kronveil Anomaly] %s (score: %.2f)", a.Signal, a.Score),
+			"severity": severity,
+			"source":   "kronveil-agent",
+			"group":    "anomaly-detection",
+			"class":    "anomaly",
+			"custom_details": map[string]interface{}{
+				"anomaly_id":  a.ID,
+				"signal":      a.Signal,
+				"score":       a.Score,
+				"description": a.Description,
+				"source":      a.Source,
+			},
+		},
+	}
+	return c.sendEvent(ctx, payload)
+}
+
+// NotifyRemediation implements engine.Notifier — triggers a PagerDuty event for a remediation action.
+func (c *Client) NotifyRemediation(ctx context.Context, action *engine.RemediationAction) error {
+	payload := map[string]interface{}{
+		"routing_key":  c.config.RoutingKey,
+		"event_action": "trigger",
+		"dedup_key":    fmt.Sprintf("kronveil-remediation-%s", action.ID),
+		"payload": map[string]interface{}{
+			"summary":  fmt.Sprintf("[Kronveil Remediation] %s on %s (%s)", action.Type, action.Target, action.Status),
+			"severity": "info",
+			"source":   "kronveil-agent",
+			"group":    "remediation",
+			"class":    "remediation",
+			"custom_details": map[string]interface{}{
+				"action_id":   action.ID,
+				"incident_id": action.IncidentID,
+				"type":        action.Type,
+				"target":      action.Target,
+				"status":      action.Status,
+				"dry_run":     action.DryRun,
+				"result":      action.Result,
+			},
+		},
+	}
+	return c.sendEvent(ctx, payload)
 }
 
 func mapSeverity(kronveilSeverity string) string {

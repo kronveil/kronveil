@@ -144,9 +144,18 @@ type OTelIntegrationConfig struct {
 }
 
 type APIConfig struct {
-	RESTPort int    `yaml:"rest_port" json:"rest_port"`
-	GRPCPort int    `yaml:"grpc_port" json:"grpc_port"`
-	APIKey   string `yaml:"api_key" json:"api_key"`
+	RESTPort int       `yaml:"rest_port" json:"rest_port"`
+	GRPCPort int       `yaml:"grpc_port" json:"grpc_port"`
+	APIKey   string    `yaml:"api_key" json:"api_key"`
+	TLS      TLSConfig `yaml:"tls" json:"tls"`
+}
+
+type TLSConfig struct {
+	Enabled    bool   `yaml:"enabled" json:"enabled"`
+	CertFile   string `yaml:"cert_file" json:"cert_file"`
+	KeyFile    string `yaml:"key_file" json:"key_file"`
+	CAFile     string `yaml:"ca_file" json:"ca_file"`
+	MutualTLS  bool   `yaml:"mutual_tls" json:"mutual_tls"`
 }
 
 // DefaultConfig returns the default configuration.

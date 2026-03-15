@@ -30,6 +30,8 @@ import (
 	promexporter "github.com/kronveil/kronveil/integrations/prometheus"
 	slacknotifier "github.com/kronveil/kronveil/integrations/slack"
 	vaultclient "github.com/kronveil/kronveil/integrations/vault"
+	logscollector "github.com/kronveil/kronveil/collectors/logs"
+	pdclient "github.com/kronveil/kronveil/integrations/pagerduty"
 )
 
 func main() {
@@ -197,7 +199,7 @@ func main() {
 		llmProvider = brClient
 	}
 
-	// Create Slack notifier.
+	// Create notifiers (Slack + PagerDuty).
 	var notifiers []engine.Notifier
 	if cfg.Integrations.Slack.Enabled && cfg.Integrations.Slack.BotToken != "" {
 		sn, err := slacknotifier.NewNotifier(slacknotifier.Config{
@@ -210,6 +212,34 @@ func main() {
 		} else {
 			notifiers = append(notifiers, sn)
 			log.Printf("  Slack: %s", cfg.Integrations.Slack.DefaultChannel)
+		}
+	}
+
+	if cfg.Integrations.PagerDuty.Enabled && cfg.Integrations.PagerDuty.RoutingKey != "" {
+		pd, err := pdclient.NewClient(pdclient.Config{
+			RoutingKey: cfg.Integrations.PagerDuty.RoutingKey,
+		})
+		if err != nil {
+			log.Printf("WARNING: Failed to create PagerDuty client: %v", err)
+		} else {
+			if err := registry.RegisterIntegration(pd); err != nil {
+				log.Fatalf("Failed to register PagerDuty integration: %v", err)
+			}
+			notifiers = append(notifiers, pd)
+			log.Println("  PagerDuty: enabled")
+		}
+	}
+
+	// Register logs collector.
+	if cfg.Collectors.Logs.Enabled {
+		var sources []logscollector.LogSource
+		lc := logscollector.New(logscollector.Config{
+			Sources:       sources,
+			ErrorPatterns: cfg.Collectors.Logs.ErrorPatterns,
+			ParseFormat:   cfg.Collectors.Logs.ParseFormat,
+		})
+		if err := registry.RegisterCollector(lc); err != nil {
+			log.Fatalf("Failed to register logs collector: %v", err)
 		}
 	}
 
@@ -257,8 +287,12 @@ func main() {
 
 	// Start REST API server.
 	apiServer := rest.NewServer(rest.Config{
-		Port:   cfg.API.RESTPort,
-		APIKey: cfg.API.APIKey,
+		Port:        cfg.API.RESTPort,
+		APIKey:      cfg.API.APIKey,
+		TLSCertFile: cfg.API.TLS.CertFile,
+		TLSKeyFile:  cfg.API.TLS.KeyFile,
+		TLSCAFile:   cfg.API.TLS.CAFile,
+		MutualTLS:   cfg.API.TLS.MutualTLS,
 	}, eng, responder, detector)
 	if err := apiServer.Start(); err != nil {
 		log.Fatalf("Failed to start REST API: %v", err)
@@ -266,7 +300,11 @@ func main() {
 
 	// Start gRPC server.
 	grpcSrv := grpcserver.NewServer(grpcserver.Config{
-		Port: cfg.API.GRPCPort,
+		Port:        cfg.API.GRPCPort,
+		TLSCertFile: cfg.API.TLS.CertFile,
+		TLSKeyFile:  cfg.API.TLS.KeyFile,
+		TLSCAFile:   cfg.API.TLS.CAFile,
+		MutualTLS:   cfg.API.TLS.MutualTLS,
 	}, eng, responder)
 	if err := grpcSrv.Start(); err != nil {
 		log.Fatalf("Failed to start gRPC server: %v", err)

@@ -2,20 +2,28 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"time"
 
 	"github.com/kronveil/kronveil/core/engine"
 	"github.com/kronveil/kronveil/intelligence/incident"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 )
 
 // Config holds gRPC server configuration.
 type Config struct {
-	Port int `yaml:"port" json:"port"`
+	Port        int    `yaml:"port" json:"port"`
+	TLSCertFile string `yaml:"tls_cert_file" json:"tls_cert_file"`
+	TLSKeyFile  string `yaml:"tls_key_file" json:"tls_key_file"`
+	TLSCAFile   string `yaml:"tls_ca_file" json:"tls_ca_file"`
+	MutualTLS   bool   `yaml:"mutual_tls" json:"mutual_tls"`
 }
 
 // Server is the gRPC API server for Kronveil.
@@ -60,16 +68,32 @@ func (s *Server) Start() error {
 	}
 	s.lis = lis
 
-	s.grpcServer = grpc.NewServer(
+	opts := []grpc.ServerOption{
 		grpc.UnaryInterceptor(loggingUnaryInterceptor),
 		grpc.StreamInterceptor(loggingStreamInterceptor),
-	)
+	}
+
+	// Configure TLS if cert/key provided.
+	if s.config.TLSCertFile != "" && s.config.TLSKeyFile != "" {
+		tlsCreds, err := buildGRPCTLSCredentials(s.config.TLSCertFile, s.config.TLSKeyFile, s.config.TLSCAFile, s.config.MutualTLS)
+		if err != nil {
+			return fmt.Errorf("failed to configure gRPC TLS: %w", err)
+		}
+		opts = append(opts, grpc.Creds(tlsCreds))
+		log.Printf("[grpc] TLS enabled (mTLS: %v)", s.config.MutualTLS)
+	}
+
+	s.grpcServer = grpc.NewServer(opts...)
+
+	// Register Kronveil gRPC service.
+	svc := &KronveilService{
+		engine:    s.engine,
+		responder: s.responder,
+	}
+	RegisterKronveilService(s.grpcServer, svc)
 
 	// Register gRPC reflection for debugging with grpcurl.
 	reflection.Register(s.grpcServer)
-
-	// NOTE: Proto-generated service registration goes here once proto code is generated:
-	// proto.RegisterKronveilServiceServer(s.grpcServer, s)
 
 	go func() {
 		log.Printf("[grpc] gRPC server listening on :%d", s.config.Port)
@@ -87,4 +111,32 @@ func (s *Server) Stop() error {
 		s.grpcServer.GracefulStop()
 	}
 	return nil
+}
+
+// buildGRPCTLSCredentials creates gRPC transport credentials with optional mTLS.
+func buildGRPCTLSCredentials(certFile, keyFile, caFile string, mutualTLS bool) (credentials.TransportCredentials, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS key pair: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	if mutualTLS && caFile != "" {
+		caCert, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA file: %w", err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA certificate")
+		}
+		tlsConfig.ClientCAs = caCertPool
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	return credentials.NewTLS(tlsConfig), nil
 }
