@@ -96,11 +96,12 @@ type RemediationConfig struct {
 }
 
 type IntegrationsConfig struct {
-	Vault        VaultIntegrationConfig        `yaml:"vault" json:"vault"`
-	AWSSecrets   AWSSecretsIntegrationConfig   `yaml:"aws_secrets" json:"aws_secrets"`
-	Slack        SlackIntegrationConfig        `yaml:"slack" json:"slack"`
-	PagerDuty    PagerDutyIntegrationConfig    `yaml:"pagerduty" json:"pagerduty"`
-	Prometheus   PrometheusIntegrationConfig   `yaml:"prometheus" json:"prometheus"`
+	Vault         VaultIntegrationConfig         `yaml:"vault" json:"vault"`
+	AWSSecrets    AWSSecretsIntegrationConfig    `yaml:"aws_secrets" json:"aws_secrets"`
+	Slack         SlackIntegrationConfig         `yaml:"slack" json:"slack"`
+	PagerDuty     PagerDutyIntegrationConfig     `yaml:"pagerduty" json:"pagerduty"`
+	Prometheus    PrometheusIntegrationConfig    `yaml:"prometheus" json:"prometheus"`
+	OpenTelemetry OTelIntegrationConfig          `yaml:"opentelemetry" json:"opentelemetry"`
 }
 
 type VaultIntegrationConfig struct {
@@ -133,6 +134,13 @@ type PrometheusIntegrationConfig struct {
 	Enabled     bool   `yaml:"enabled" json:"enabled"`
 	Port        int    `yaml:"port" json:"port"`
 	MetricsPath string `yaml:"metrics_path" json:"metrics_path"`
+}
+
+type OTelIntegrationConfig struct {
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	Endpoint       string `yaml:"endpoint" json:"endpoint"`
+	Insecure       bool   `yaml:"insecure" json:"insecure"`
+	ExportInterval string `yaml:"export_interval" json:"export_interval"`
 }
 
 type APIConfig struct {
@@ -187,6 +195,12 @@ func DefaultConfig() *Config {
 				Enabled:     true,
 				Port:        9090,
 				MetricsPath: "/metrics",
+			},
+			OpenTelemetry: OTelIntegrationConfig{
+				Enabled:        false,
+				Endpoint:       "localhost:4317",
+				Insecure:       true,
+				ExportInterval: "30s",
 			},
 		},
 		API: APIConfig{

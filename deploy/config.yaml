@@ -77,6 +77,11 @@ integrations:
     enabled: true
     port: 9090
     metrics_path: /metrics
+  opentelemetry:
+    enabled: false
+    endpoint: "localhost:4317"
+    insecure: true
+    export_interval: "30s"
 
 api:
   rest_port: 8080

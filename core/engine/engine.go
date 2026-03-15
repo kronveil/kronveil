@@ -12,6 +12,7 @@ import (
 type Engine struct {
 	registry  *Registry
 	publisher EventPublisher
+	metrics   MetricsRecorder
 	startTime time.Time
 	mu        sync.RWMutex
 	running   bool
@@ -20,10 +21,14 @@ type Engine struct {
 }
 
 // NewEngine creates a new agent engine.
-func NewEngine(registry *Registry, publisher EventPublisher) *Engine {
+func NewEngine(registry *Registry, publisher EventPublisher, metrics MetricsRecorder) *Engine {
+	if metrics == nil {
+		metrics = &NoopMetricsRecorder{}
+	}
 	return &Engine{
 		registry:  registry,
 		publisher: publisher,
+		metrics:   metrics,
 	}
 }
 
@@ -85,11 +90,14 @@ func (e *Engine) routeEvents(ctx context.Context, col Collector) {
 				return
 			}
 
+			e.metrics.RecordEvent(event.Source)
+
 			// Publish to event bus for persistence and streaming.
 			if e.publisher != nil {
 				topic := fmt.Sprintf("kronveil.telemetry.%s", event.Source)
 				if err := e.publisher.Publish(ctx, topic, event); err != nil {
 					log.Printf("[engine] Failed to publish event to bus: %v", err)
+					e.metrics.RecordCollectorError(event.Source)
 				}
 			}
 
@@ -159,13 +167,19 @@ func (e *Engine) Status() HealthStatus {
 	status := "healthy"
 	components := e.registry.Health()
 
+	healthy, degraded, critical := 0, 0, 0
 	for _, c := range components {
-		if c.Status == "critical" {
+		switch c.Status {
+		case "critical":
 			status = "critical"
-			break
-		}
-		if c.Status == "degraded" {
-			status = "degraded"
+			critical++
+		case "degraded":
+			if status != "critical" {
+				status = "degraded"
+			}
+			degraded++
+		default:
+			healthy++
 		}
 	}
 
@@ -173,6 +187,9 @@ func (e *Engine) Status() HealthStatus {
 	if e.running {
 		uptime = time.Since(e.startTime)
 	}
+
+	e.metrics.SetComponentHealth(healthy, degraded, critical)
+	e.metrics.SetUptime(uptime.Seconds())
 
 	return HealthStatus{
 		Status:     status,

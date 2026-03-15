@@ -38,8 +38,14 @@ type Detector struct {
 	signals           map[string]*SignalState
 	anomalyCh         chan *engine.Anomaly
 	detectedAnomalies []*engine.Anomaly
+	metrics           engine.MetricsRecorder
 	running           bool
 	cancel            context.CancelFunc
+}
+
+// SetMetrics sets the metrics recorder for the detector.
+func (d *Detector) SetMetrics(m engine.MetricsRecorder) {
+	d.metrics = m
 }
 
 // SignalState tracks the state of a monitored signal.
@@ -109,6 +115,9 @@ func (d *Detector) Analyze(ctx context.Context, event *engine.TelemetryEvent) er
 		key := fmt.Sprintf("%s.%s", event.Source, signalName)
 		anomaly := d.analyzeSignal(key, value, event)
 		if anomaly != nil {
+			if d.metrics != nil {
+				d.metrics.RecordAnomaly()
+			}
 			d.mu.Lock()
 			d.detectedAnomalies = append(d.detectedAnomalies, anomaly)
 			d.mu.Unlock()

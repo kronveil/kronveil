@@ -17,6 +17,12 @@ type Engine struct {
 	policies   map[string]PolicyDefinition
 	violations []engine.PolicyViolation
 	evalCount  int64
+	metrics    engine.MetricsRecorder
+}
+
+// SetMetrics sets the metrics recorder for the policy engine.
+func (e *Engine) SetMetrics(m engine.MetricsRecorder) {
+	e.metrics = m
 }
 
 // NewEngine creates a new policy engine with default policies loaded.
@@ -77,6 +83,10 @@ func (e *Engine) Evaluate(ctx context.Context, input interface{}) ([]engine.Poli
 	e.evalCount++
 	e.mu.Unlock()
 
+	if e.metrics != nil {
+		e.metrics.RecordPolicyEvaluation()
+	}
+
 	// Serialize input for policy evaluation.
 	inputBytes, err := json.Marshal(input)
 	if err != nil {
@@ -108,6 +118,11 @@ func (e *Engine) Evaluate(ctx context.Context, input interface{}) ([]engine.Poli
 
 	// Store violations.
 	if len(violations) > 0 {
+		if e.metrics != nil {
+			for range violations {
+				e.metrics.RecordPolicyViolation()
+			}
+		}
 		e.mu.Lock()
 		e.violations = append(e.violations, violations...)
 		// Keep only last 10000 violations in memory.

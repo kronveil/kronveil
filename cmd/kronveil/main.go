@@ -7,18 +7,22 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/kronveil/kronveil/api/rest"
-	"github.com/kronveil/kronveil/core/engine"
-	"github.com/kronveil/kronveil/core/eventbus"
-	"github.com/kronveil/kronveil/intelligence/anomaly"
-	"github.com/kronveil/kronveil/intelligence/incident"
-	"github.com/kronveil/kronveil/intelligence/rootcause"
-	"github.com/kronveil/kronveil/intelligence/capacity"
-	"github.com/kronveil/kronveil/internal/config"
-	"github.com/kronveil/kronveil/internal/version"
 	k8scollector "github.com/kronveil/kronveil/collectors/kubernetes"
 	kafkacollector "github.com/kronveil/kronveil/collectors/kafka"
+	"github.com/kronveil/kronveil/core/engine"
+	"github.com/kronveil/kronveil/core/eventbus"
+	"github.com/kronveil/kronveil/core/metrics"
+	"github.com/kronveil/kronveil/intelligence/anomaly"
+	"github.com/kronveil/kronveil/intelligence/capacity"
+	"github.com/kronveil/kronveil/intelligence/incident"
+	"github.com/kronveil/kronveil/intelligence/rootcause"
+	"github.com/kronveil/kronveil/internal/config"
+	"github.com/kronveil/kronveil/internal/version"
+	otelexporter "github.com/kronveil/kronveil/integrations/otel"
+	promexporter "github.com/kronveil/kronveil/integrations/prometheus"
 )
 
 func main() {
@@ -48,6 +52,41 @@ func main() {
 
 	// Create component registry.
 	registry := engine.NewRegistry()
+
+	// Set up metrics backends.
+	var recorders []engine.MetricsRecorder
+
+	if cfg.Integrations.Prometheus.Enabled {
+		prom := promexporter.NewExporter(promexporter.Config{
+			Port:        cfg.Integrations.Prometheus.Port,
+			MetricsPath: cfg.Integrations.Prometheus.MetricsPath,
+		})
+		if err := registry.RegisterIntegration(prom); err != nil {
+			log.Fatalf("Failed to register prometheus exporter: %v", err)
+		}
+		recorders = append(recorders, prom)
+		log.Printf("  Prometheus: http://localhost:%d%s",
+			cfg.Integrations.Prometheus.Port, cfg.Integrations.Prometheus.MetricsPath)
+	}
+
+	if cfg.Integrations.OpenTelemetry.Enabled {
+		exportInterval, _ := time.ParseDuration(cfg.Integrations.OpenTelemetry.ExportInterval)
+		if exportInterval == 0 {
+			exportInterval = 30 * time.Second
+		}
+		otel := otelexporter.NewExporter(otelexporter.Config{
+			Endpoint:       cfg.Integrations.OpenTelemetry.Endpoint,
+			Insecure:       cfg.Integrations.OpenTelemetry.Insecure,
+			ExportInterval: exportInterval,
+		})
+		if err := registry.RegisterIntegration(otel); err != nil {
+			log.Fatalf("Failed to register otel exporter: %v", err)
+		}
+		recorders = append(recorders, otel)
+		log.Printf("  OpenTelemetry: %s", cfg.Integrations.OpenTelemetry.Endpoint)
+	}
+
+	metricsRecorder := metrics.NewCompositeRecorder(recorders...)
 
 	// Register collectors.
 	if cfg.Collectors.Kubernetes.Enabled {
@@ -80,6 +119,7 @@ func main() {
 		ZScoreThreshold: cfg.Intelligence.AnomalyDetection.ZScoreThreshold,
 		Sensitivity:     cfg.Intelligence.AnomalyDetection.Sensitivity,
 	})
+	detector.SetMetrics(metricsRecorder)
 	if err := registry.RegisterModule(detector); err != nil {
 		log.Fatalf("Failed to register anomaly detector: %v", err)
 	}
@@ -89,6 +129,7 @@ func main() {
 		DryRun:        cfg.Intelligence.Remediation.DryRun,
 		MaxRetries:    cfg.Intelligence.Remediation.MaxRetries,
 	}, nil, nil)
+	responder.SetMetrics(metricsRecorder)
 	if err := registry.RegisterModule(responder); err != nil {
 		log.Fatalf("Failed to register incident responder: %v", err)
 	}
@@ -105,7 +146,7 @@ func main() {
 	}
 
 	// Create and start the engine.
-	eng := engine.NewEngine(registry, bus)
+	eng := engine.NewEngine(registry, bus, metricsRecorder)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

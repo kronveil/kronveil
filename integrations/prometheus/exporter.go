@@ -8,75 +8,171 @@ import (
 	"time"
 
 	"github.com/kronveil/kronveil/core/engine"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Config holds Prometheus exporter configuration.
 type Config struct {
-	Port         int    `yaml:"port" json:"port"`
-	MetricsPath  string `yaml:"metrics_path" json:"metrics_path"`
-	Namespace    string `yaml:"namespace" json:"namespace"`
-}
-
-// DefaultConfig returns default Prometheus configuration.
-func DefaultConfig() Config {
-	return Config{
-		Port:        9090,
-		MetricsPath: "/metrics",
-		Namespace:   "kronveil",
-	}
+	Port        int
+	MetricsPath string
 }
 
 // Exporter exposes Kronveil metrics for Prometheus scraping.
+// It implements both engine.Integration and engine.MetricsRecorder.
 type Exporter struct {
-	config  Config
-	metrics *MetricsSet
-	server  *http.Server
-}
+	config   Config
+	registry *prometheus.Registry
+	server   *http.Server
 
-// MetricsSet holds all Kronveil Prometheus metrics.
-type MetricsSet struct {
-	// Collector metrics
-	EventsTotal        map[string]int64 // source -> count
-	EventsPerSec       map[string]float64
-	CollectorErrors     map[string]int64
+	// Counters
+	eventsTotal        *prometheus.CounterVec
+	collectorErrors    *prometheus.CounterVec
+	anomaliesDetected  prometheus.Counter
+	incidentsCreated   prometheus.Counter
+	incidentsResolved  prometheus.Counter
+	remediationsTotal  prometheus.Counter
+	remediationsSuccess prometheus.Counter
+	remediationsFailed prometheus.Counter
+	policyEvaluations  prometheus.Counter
+	policyViolations   prometheus.Counter
 
-	// Intelligence metrics
-	AnomaliesDetected   int64
-	IncidentsCreated    int64
-	IncidentsResolved   int64
-	RemediationsTotal   int64
-	RemediationsSuccess int64
-	RemediationsFailed  int64
-	MTTRSeconds         float64
-
-	// Policy metrics
-	PolicyEvaluations   int64
-	PolicyViolations    int64
-
-	// System metrics
-	UptimeSeconds       float64
-	ComponentsHealthy   int
-	ComponentsDegraded  int
-	ComponentsCritical  int
+	// Gauges
+	mttrSeconds        prometheus.Gauge
+	uptimeSeconds      prometheus.Gauge
+	componentsHealthy  prometheus.Gauge
+	componentsDegraded prometheus.Gauge
+	componentsCritical prometheus.Gauge
 }
 
 // NewExporter creates a new Prometheus metrics exporter.
 func NewExporter(config Config) *Exporter {
-	return &Exporter{
-		config: config,
-		metrics: &MetricsSet{
-			EventsTotal:   make(map[string]int64),
-			EventsPerSec:  make(map[string]float64),
-			CollectorErrors: make(map[string]int64),
-		},
+	reg := prometheus.NewRegistry()
+
+	e := &Exporter{
+		config:   config,
+		registry: reg,
+
+		eventsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "events_total",
+			Help:      "Total number of telemetry events received",
+		}, []string{"source"}),
+
+		collectorErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "collector_errors_total",
+			Help:      "Total number of collector errors",
+		}, []string{"source"}),
+
+		anomaliesDetected: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "anomalies_detected_total",
+			Help:      "Total number of anomalies detected",
+		}),
+
+		incidentsCreated: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "incidents_created_total",
+			Help:      "Total number of incidents created",
+		}),
+
+		incidentsResolved: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "incidents_resolved_total",
+			Help:      "Total number of incidents resolved",
+		}),
+
+		remediationsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "remediations_total",
+			Help:      "Total number of remediation actions attempted",
+		}),
+
+		remediationsSuccess: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "remediations_success_total",
+			Help:      "Total number of successful remediations",
+		}),
+
+		remediationsFailed: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "remediations_failed_total",
+			Help:      "Total number of failed remediations",
+		}),
+
+		policyEvaluations: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "policy_evaluations_total",
+			Help:      "Total number of policy evaluations",
+		}),
+
+		policyViolations: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "kronveil",
+			Name:      "policy_violations_total",
+			Help:      "Total number of policy violations detected",
+		}),
+
+		mttrSeconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "kronveil",
+			Name:      "mttr_seconds",
+			Help:      "Mean time to recovery in seconds",
+		}),
+
+		uptimeSeconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "kronveil",
+			Name:      "uptime_seconds",
+			Help:      "Agent uptime in seconds",
+		}),
+
+		componentsHealthy: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "kronveil",
+			Name:      "components_healthy",
+			Help:      "Number of healthy components",
+		}),
+
+		componentsDegraded: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "kronveil",
+			Name:      "components_degraded",
+			Help:      "Number of degraded components",
+		}),
+
+		componentsCritical: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "kronveil",
+			Name:      "components_critical",
+			Help:      "Number of critical components",
+		}),
 	}
+
+	// Register all metrics with the custom registry.
+	reg.MustRegister(
+		e.eventsTotal,
+		e.collectorErrors,
+		e.anomaliesDetected,
+		e.incidentsCreated,
+		e.incidentsResolved,
+		e.remediationsTotal,
+		e.remediationsSuccess,
+		e.remediationsFailed,
+		e.policyEvaluations,
+		e.policyViolations,
+		e.mttrSeconds,
+		e.uptimeSeconds,
+		e.componentsHealthy,
+		e.componentsDegraded,
+		e.componentsCritical,
+	)
+
+	return e
 }
+
+// Integration interface implementation.
 
 func (e *Exporter) Name() string { return "prometheus" }
 
-func (e *Exporter) Initialize(ctx context.Context) error {
+func (e *Exporter) Initialize(_ context.Context) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc(e.config.MetricsPath, e.metricsHandler)
+	mux.Handle(e.config.MetricsPath, promhttp.HandlerFor(e.registry, promhttp.HandlerOpts{}))
 
 	e.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", e.config.Port),
@@ -107,69 +203,60 @@ func (e *Exporter) Health() engine.ComponentHealth {
 	return engine.ComponentHealth{
 		Name:      "prometheus-exporter",
 		Status:    "healthy",
-		Message:   fmt.Sprintf("serving metrics on :%d", e.config.Port),
+		Message:   fmt.Sprintf("serving metrics on :%d%s", e.config.Port, e.config.MetricsPath),
 		LastCheck: time.Now(),
 	}
 }
 
-// RecordEvent records a telemetry event metric.
+// MetricsRecorder interface implementation.
+
 func (e *Exporter) RecordEvent(source string) {
-	e.metrics.EventsTotal[source]++
+	e.eventsTotal.WithLabelValues(source).Inc()
 }
 
-// RecordAnomaly increments the anomaly counter.
+func (e *Exporter) RecordCollectorError(source string) {
+	e.collectorErrors.WithLabelValues(source).Inc()
+}
+
 func (e *Exporter) RecordAnomaly() {
-	e.metrics.AnomaliesDetected++
+	e.anomaliesDetected.Inc()
 }
 
-// RecordIncident increments the incident counter.
-func (e *Exporter) RecordIncident() {
-	e.metrics.IncidentsCreated++
+func (e *Exporter) RecordIncidentCreated() {
+	e.incidentsCreated.Inc()
 }
 
-// RecordRemediation records a remediation outcome.
+func (e *Exporter) RecordIncidentResolved() {
+	e.incidentsResolved.Inc()
+}
+
 func (e *Exporter) RecordRemediation(success bool) {
-	e.metrics.RemediationsTotal++
+	e.remediationsTotal.Inc()
 	if success {
-		e.metrics.RemediationsSuccess++
+		e.remediationsSuccess.Inc()
 	} else {
-		e.metrics.RemediationsFailed++
+		e.remediationsFailed.Inc()
 	}
 }
 
-// SetMTTR updates the average MTTR metric.
 func (e *Exporter) SetMTTR(seconds float64) {
-	e.metrics.MTTRSeconds = seconds
+	e.mttrSeconds.Set(seconds)
 }
 
-func (e *Exporter) metricsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	ns := e.config.Namespace
+func (e *Exporter) RecordPolicyEvaluation() {
+	e.policyEvaluations.Inc()
+}
 
-	// Collector metrics
-	for source, count := range e.metrics.EventsTotal {
-		fmt.Fprintf(w, "%s_events_total{source=\"%s\"} %d\n", ns, source, count)
-	}
-	for source, rate := range e.metrics.EventsPerSec {
-		fmt.Fprintf(w, "%s_events_per_second{source=\"%s\"} %.2f\n", ns, source, rate)
-	}
+func (e *Exporter) RecordPolicyViolation() {
+	e.policyViolations.Inc()
+}
 
-	// Intelligence metrics
-	fmt.Fprintf(w, "%s_anomalies_detected_total %d\n", ns, e.metrics.AnomaliesDetected)
-	fmt.Fprintf(w, "%s_incidents_created_total %d\n", ns, e.metrics.IncidentsCreated)
-	fmt.Fprintf(w, "%s_incidents_resolved_total %d\n", ns, e.metrics.IncidentsResolved)
-	fmt.Fprintf(w, "%s_remediations_total %d\n", ns, e.metrics.RemediationsTotal)
-	fmt.Fprintf(w, "%s_remediations_success_total %d\n", ns, e.metrics.RemediationsSuccess)
-	fmt.Fprintf(w, "%s_remediations_failed_total %d\n", ns, e.metrics.RemediationsFailed)
-	fmt.Fprintf(w, "%s_mttr_seconds %.2f\n", ns, e.metrics.MTTRSeconds)
+func (e *Exporter) SetComponentHealth(healthy, degraded, critical int) {
+	e.componentsHealthy.Set(float64(healthy))
+	e.componentsDegraded.Set(float64(degraded))
+	e.componentsCritical.Set(float64(critical))
+}
 
-	// Policy metrics
-	fmt.Fprintf(w, "%s_policy_evaluations_total %d\n", ns, e.metrics.PolicyEvaluations)
-	fmt.Fprintf(w, "%s_policy_violations_total %d\n", ns, e.metrics.PolicyViolations)
-
-	// System metrics
-	fmt.Fprintf(w, "%s_uptime_seconds %.0f\n", ns, e.metrics.UptimeSeconds)
-	fmt.Fprintf(w, "%s_components_healthy %d\n", ns, e.metrics.ComponentsHealthy)
-	fmt.Fprintf(w, "%s_components_degraded %d\n", ns, e.metrics.ComponentsDegraded)
-	fmt.Fprintf(w, "%s_components_critical %d\n", ns, e.metrics.ComponentsCritical)
+func (e *Exporter) SetUptime(seconds float64) {
+	e.uptimeSeconds.Set(seconds)
 }

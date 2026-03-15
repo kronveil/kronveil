@@ -173,3 +173,33 @@ type EventSubscriber interface {
 	Subscribe(ctx context.Context, topic string, handler func(*TelemetryEvent)) error
 	Unsubscribe(topic string) error
 }
+
+// MetricsRecorder abstracts metrics recording across backends (Prometheus, OpenTelemetry, etc.).
+type MetricsRecorder interface {
+	RecordEvent(source string)
+	RecordCollectorError(source string)
+	RecordAnomaly()
+	RecordIncidentCreated()
+	RecordIncidentResolved()
+	RecordRemediation(success bool)
+	SetMTTR(seconds float64)
+	RecordPolicyEvaluation()
+	RecordPolicyViolation()
+	SetComponentHealth(healthy, degraded, critical int)
+	SetUptime(seconds float64)
+}
+
+// NoopMetricsRecorder is a no-op implementation used when no metrics backends are enabled.
+type NoopMetricsRecorder struct{}
+
+func (n *NoopMetricsRecorder) RecordEvent(string)                     {}
+func (n *NoopMetricsRecorder) RecordCollectorError(string)            {}
+func (n *NoopMetricsRecorder) RecordAnomaly()                         {}
+func (n *NoopMetricsRecorder) RecordIncidentCreated()                 {}
+func (n *NoopMetricsRecorder) RecordIncidentResolved()                {}
+func (n *NoopMetricsRecorder) RecordRemediation(bool)                 {}
+func (n *NoopMetricsRecorder) SetMTTR(float64)                        {}
+func (n *NoopMetricsRecorder) RecordPolicyEvaluation()                {}
+func (n *NoopMetricsRecorder) RecordPolicyViolation()                 {}
+func (n *NoopMetricsRecorder) SetComponentHealth(int, int, int)       {}
+func (n *NoopMetricsRecorder) SetUptime(float64)                      {}

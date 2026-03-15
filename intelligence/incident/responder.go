@@ -37,10 +37,16 @@ type Responder struct {
 	incidents  map[string]*engine.Incident
 	notifiers  []engine.Notifier
 	llm        engine.LLMProvider
+	metrics    engine.MetricsRecorder
 	running    bool
 	cancel     context.CancelFunc
 	incidentCh chan *engine.Incident
 	counter    int64
+}
+
+// SetMetrics sets the metrics recorder for the responder.
+func (r *Responder) SetMetrics(m engine.MetricsRecorder) {
+	r.metrics = m
 }
 
 // New creates a new incident responder.
@@ -163,6 +169,9 @@ func (r *Responder) createIncident(ctx context.Context, event *engine.TelemetryE
 	}
 
 	r.incidents[id] = incident
+	if r.metrics != nil {
+		r.metrics.RecordIncidentCreated()
+	}
 	log.Printf("[incident] Created incident %s: %s (severity: %s)", id, title, event.Severity)
 
 	select {
@@ -224,6 +233,10 @@ func (r *Responder) ResolveIncident(id string) error {
 	inc.Timeline = append(inc.Timeline, engine.TimelineEntry{
 		Timestamp: now, Action: "resolved", Details: fmt.Sprintf("Incident resolved (MTTR: %s)", mttr), Actor: "system",
 	})
+	if r.metrics != nil {
+		r.metrics.RecordIncidentResolved()
+		r.metrics.SetMTTR(mttr.Seconds())
+	}
 	return nil
 }
 
@@ -296,10 +309,16 @@ func (r *Responder) attemptRemediation(ctx context.Context, incident *engine.Inc
 		log.Printf("[incident] Remediation failed for %s: %v", incident.ID, err)
 		action.Status = "failed"
 		action.Result = err.Error()
+		if r.metrics != nil {
+			r.metrics.RecordRemediation(false)
+		}
 	} else {
 		action.Status = "completed"
 		now := time.Now()
 		action.ExecutedAt = &now
+		if r.metrics != nil {
+			r.metrics.RecordRemediation(true)
+		}
 
 		// Auto-resolve the incident if remediation succeeds.
 		if err := r.ResolveIncident(incident.ID); err != nil {
