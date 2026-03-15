@@ -8,6 +8,12 @@ import (
 	"time"
 
 	"github.com/kronveil/kronveil/core/engine"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 // Config holds the Kubernetes collector configuration.
@@ -32,14 +38,16 @@ func DefaultConfig() Config {
 
 // Collector gathers telemetry from Kubernetes clusters.
 type Collector struct {
-	config   Config
-	events   chan *engine.TelemetryEvent
-	mu       sync.RWMutex
-	running  bool
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
-	lastErr  error
-	stats    collectorStats
+	config        Config
+	clientset     kubernetes.Interface
+	metricsClient *metricsclientset.Clientset
+	events        chan *engine.TelemetryEvent
+	mu            sync.RWMutex
+	running       bool
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	lastErr       error
+	stats         collectorStats
 }
 
 type collectorStats struct {
@@ -51,10 +59,40 @@ type collectorStats struct {
 
 // New creates a new Kubernetes collector.
 func New(config Config) *Collector {
-	return &Collector{
+	c := &Collector{
 		config: config,
 		events: make(chan *engine.TelemetryEvent, 1000),
 	}
+
+	// Try to build Kubernetes client config.
+	var restConfig *rest.Config
+	var err error
+	if config.Kubeconfig != "" {
+		restConfig, err = clientcmd.BuildConfigFromFlags("", config.Kubeconfig)
+	} else {
+		restConfig, err = rest.InClusterConfig()
+	}
+
+	if err != nil {
+		log.Printf("[k8s-collector] WARNING: failed to build k8s config: %v (running in degraded mode)", err)
+		return c
+	}
+
+	cs, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		log.Printf("[k8s-collector] WARNING: failed to create k8s clientset: %v (running in degraded mode)", err)
+		return c
+	}
+	c.clientset = cs
+
+	mc, err := metricsclientset.NewForConfig(restConfig)
+	if err != nil {
+		log.Printf("[k8s-collector] WARNING: failed to create metrics clientset: %v", err)
+	} else {
+		c.metricsClient = mc
+	}
+
+	return c
 }
 
 // Name returns the collector name.
@@ -120,7 +158,10 @@ func (c *Collector) Health() engine.ComponentHealth {
 	defer c.mu.RUnlock()
 	status := "healthy"
 	msg := fmt.Sprintf("watching %d pods, %d nodes", c.stats.podsWatched, c.stats.nodesWatched)
-	if c.lastErr != nil {
+	if c.clientset == nil {
+		status = "degraded"
+		msg = "no kubernetes client configured"
+	} else if c.lastErr != nil {
 		status = "degraded"
 		msg = c.lastErr.Error()
 	}
@@ -134,34 +175,147 @@ func (c *Collector) Health() engine.ComponentHealth {
 
 func (c *Collector) watchPods(ctx context.Context) {
 	defer c.wg.Done()
-	ticker := time.NewTicker(c.config.PollInterval)
-	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			c.emitEvent("pod_status", map[string]interface{}{
-				"type":       "pod_health_check",
-				"pods_total": c.stats.podsWatched,
-			}, engine.SeverityInfo)
+	if c.clientset == nil {
+		// Fallback: emit stub events on a timer.
+		ticker := time.NewTicker(c.config.PollInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				c.emitEvent("pod_status", map[string]interface{}{
+					"type":       "pod_health_check",
+					"pods_total": c.stats.podsWatched,
+				}, engine.SeverityInfo)
+			}
+		}
+	}
+
+	namespaces := c.config.Namespaces
+	if len(namespaces) == 0 {
+		namespaces = []string{""}
+	}
+
+	for _, ns := range namespaces {
+		watcher, err := c.clientset.CoreV1().Pods(ns).Watch(ctx, metav1.ListOptions{})
+		if err != nil {
+			c.mu.Lock()
+			c.lastErr = err
+			c.mu.Unlock()
+			log.Printf("[k8s-collector] Failed to watch pods in %q: %v", ns, err)
+			continue
+		}
+		defer watcher.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					return
+				}
+				pod, ok := event.Object.(*corev1.Pod)
+				if !ok {
+					continue
+				}
+
+				c.mu.Lock()
+				c.stats.podsWatched++
+				c.mu.Unlock()
+
+				for _, cs := range pod.Status.ContainerStatuses {
+					if cs.State.Waiting != nil {
+						severity := engine.SeverityInfo
+						reason := cs.State.Waiting.Reason
+						switch reason {
+						case "CrashLoopBackOff":
+							severity = engine.SeverityCritical
+						case "OOMKilled":
+							severity = engine.SeverityCritical
+						case "ImagePullBackOff", "ErrImagePull":
+							severity = engine.SeverityHigh
+						}
+						if severity != engine.SeverityInfo {
+							c.emitEvent("pod_issue", map[string]interface{}{
+								"pod":       pod.Name,
+								"namespace": pod.Namespace,
+								"container": cs.Name,
+								"reason":    reason,
+								"message":   cs.State.Waiting.Message,
+								"restarts":  cs.RestartCount,
+							}, severity)
+						}
+					}
+				}
+			}
 		}
 	}
 }
 
 func (c *Collector) watchEvents(ctx context.Context) {
 	defer c.wg.Done()
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			// In production: uses client-go Watch on core/v1 Events.
-			// Emits events for OOMKilled, CrashLoopBackOff, FailedScheduling, etc.
+	if c.clientset == nil {
+		// No client; wait for context cancellation.
+		<-ctx.Done()
+		return
+	}
+
+	namespaces := c.config.Namespaces
+	if len(namespaces) == 0 {
+		namespaces = []string{""}
+	}
+
+	for _, ns := range namespaces {
+		watcher, err := c.clientset.CoreV1().Events(ns).Watch(ctx, metav1.ListOptions{
+			FieldSelector: "type=Warning",
+		})
+		if err != nil {
+			c.mu.Lock()
+			c.lastErr = err
+			c.mu.Unlock()
+			log.Printf("[k8s-collector] Failed to watch events in %q: %v", ns, err)
+			continue
+		}
+		defer watcher.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					return
+				}
+				k8sEvent, ok := event.Object.(*corev1.Event)
+				if !ok {
+					continue
+				}
+
+				severity := engine.SeverityMedium
+				switch k8sEvent.Reason {
+				case "OOMKilling", "OOMKilled":
+					severity = engine.SeverityCritical
+				case "FailedScheduling", "FailedMount", "FailedAttachVolume":
+					severity = engine.SeverityHigh
+				case "BackOff":
+					severity = engine.SeverityHigh
+				case "Unhealthy", "ProbeWarning":
+					severity = engine.SeverityMedium
+				}
+
+				c.emitEvent("k8s_event", map[string]interface{}{
+					"reason":    k8sEvent.Reason,
+					"message":   k8sEvent.Message,
+					"namespace": k8sEvent.Namespace,
+					"object":    k8sEvent.InvolvedObject.Name,
+					"kind":      k8sEvent.InvolvedObject.Kind,
+					"count":     k8sEvent.Count,
+				}, severity)
+			}
 		}
 	}
 }
@@ -176,11 +330,63 @@ func (c *Collector) collectMetrics(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// In production: queries metrics-server for node/pod resource usage.
-			c.emitEvent("node_metrics", map[string]interface{}{
-				"type":        "node_resource_usage",
-				"nodes_total": c.stats.nodesWatched,
-			}, engine.SeverityInfo)
+			if c.metricsClient == nil {
+				c.emitEvent("node_metrics", map[string]interface{}{
+					"type":        "node_resource_usage",
+					"nodes_total": c.stats.nodesWatched,
+				}, engine.SeverityInfo)
+				continue
+			}
+
+			// Collect node metrics.
+			nodeMetrics, err := c.metricsClient.MetricsV1beta1().NodeMetricses().List(ctx, metav1.ListOptions{})
+			if err != nil {
+				c.mu.Lock()
+				c.lastErr = err
+				c.mu.Unlock()
+				log.Printf("[k8s-collector] Failed to get node metrics: %v", err)
+				continue
+			}
+
+			c.mu.Lock()
+			c.stats.nodesWatched = len(nodeMetrics.Items)
+			c.mu.Unlock()
+
+			for _, nm := range nodeMetrics.Items {
+				cpuMillis := nm.Usage.Cpu().MilliValue()
+				memBytes := nm.Usage.Memory().Value()
+				c.emitEvent("node_metrics", map[string]interface{}{
+					"node":       nm.Name,
+					"cpu_millis": cpuMillis,
+					"mem_bytes":  memBytes,
+				}, engine.SeverityInfo)
+			}
+
+			// Collect pod metrics per namespace.
+			namespaces := c.config.Namespaces
+			if len(namespaces) == 0 {
+				namespaces = []string{""}
+			}
+			for _, ns := range namespaces {
+				podMetrics, err := c.metricsClient.MetricsV1beta1().PodMetricses(ns).List(ctx, metav1.ListOptions{})
+				if err != nil {
+					log.Printf("[k8s-collector] Failed to get pod metrics in %q: %v", ns, err)
+					continue
+				}
+				for _, pm := range podMetrics.Items {
+					for _, container := range pm.Containers {
+						cpuMillis := container.Usage.Cpu().MilliValue()
+						memBytes := container.Usage.Memory().Value()
+						c.emitEvent("pod_metrics", map[string]interface{}{
+							"pod":        pm.Name,
+							"namespace":  pm.Namespace,
+							"container":  container.Name,
+							"cpu_millis": cpuMillis,
+							"mem_bytes":  memBytes,
+						}, engine.SeverityInfo)
+					}
+				}
+			}
 		}
 	}
 }

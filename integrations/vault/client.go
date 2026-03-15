@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	vaultapi "github.com/hashicorp/vault/api"
 	"github.com/kronveil/kronveil/core/engine"
 )
 
@@ -21,11 +22,12 @@ type Config struct {
 
 // Client integrates with HashiCorp Vault for secret-aware monitoring.
 type Client struct {
-	config   Config
-	mu       sync.RWMutex
-	secrets  map[string]*SecretMetadata
-	certs    map[string]*CertificateInfo
-	lastErr  error
+	config      Config
+	vaultClient *vaultapi.Client
+	mu          sync.RWMutex
+	secrets     map[string]*SecretMetadata
+	certs       map[string]*CertificateInfo
+	lastErr     error
 }
 
 // SecretMetadata tracks metadata about a monitored secret.
@@ -54,19 +56,46 @@ func NewClient(config Config) (*Client, error) {
 		return nil, fmt.Errorf("vault address is required")
 	}
 
-	return &Client{
+	c := &Client{
 		config:  config,
 		secrets: make(map[string]*SecretMetadata),
 		certs:   make(map[string]*CertificateInfo),
-	}, nil
+	}
+
+	vaultCfg := vaultapi.DefaultConfig()
+	vaultCfg.Address = config.Address
+	vc, err := vaultapi.NewClient(vaultCfg)
+	if err != nil {
+		log.Printf("[vault] WARNING: failed to create Vault API client: %v (running in degraded mode)", err)
+	} else {
+		if config.Token != "" {
+			vc.SetToken(config.Token)
+		}
+		if config.Namespace != "" {
+			vc.SetNamespace(config.Namespace)
+		}
+		c.vaultClient = vc
+	}
+
+	return c, nil
 }
 
 func (c *Client) Name() string { return "hashicorp-vault" }
 
 func (c *Client) Initialize(ctx context.Context) error {
-	// In production: creates Vault API client and validates auth.
-	log.Printf("[vault] Vault integration initialized (address: %s, auth: %s)",
-		c.config.Address, c.config.AuthMethod)
+	if c.vaultClient != nil {
+		health, err := c.vaultClient.Sys().Health()
+		if err != nil {
+			c.mu.Lock()
+			c.lastErr = fmt.Errorf("vault health check failed: %w", err)
+			c.mu.Unlock()
+			log.Printf("[vault] WARNING: health check failed: %v (continuing in degraded mode)", err)
+		} else {
+			log.Printf("[vault] Vault integration initialized (address: %s, sealed: %v)", c.config.Address, health.Sealed)
+		}
+	} else {
+		log.Printf("[vault] Vault integration initialized in degraded mode (no client)")
+	}
 	return nil
 }
 
@@ -80,7 +109,10 @@ func (c *Client) Health() engine.ComponentHealth {
 	defer c.mu.RUnlock()
 	status := "healthy"
 	msg := fmt.Sprintf("monitoring %d secrets, %d certificates", len(c.secrets), len(c.certs))
-	if c.lastErr != nil {
+	if c.vaultClient == nil {
+		status = "degraded"
+		msg = "no vault client configured"
+	} else if c.lastErr != nil {
 		status = "degraded"
 		msg = c.lastErr.Error()
 	}
@@ -94,8 +126,26 @@ func (c *Client) Health() engine.ComponentHealth {
 
 // ReadSecret reads a secret from Vault.
 func (c *Client) ReadSecret(ctx context.Context, path string) (map[string]interface{}, error) {
-	// In production: uses vault/api client.Logical().ReadWithContext(ctx, path).
-	return nil, fmt.Errorf("vault read requires configured credentials")
+	if c.vaultClient == nil {
+		return nil, fmt.Errorf("vault client not configured")
+	}
+
+	secret, err := c.vaultClient.Logical().ReadWithContext(ctx, path)
+	if err != nil {
+		c.mu.Lock()
+		c.lastErr = err
+		c.mu.Unlock()
+		return nil, fmt.Errorf("vault read failed: %w", err)
+	}
+	if secret == nil {
+		return nil, fmt.Errorf("secret not found at path: %s", path)
+	}
+
+	// Handle KV v2 nested data structure.
+	if data, ok := secret.Data["data"].(map[string]interface{}); ok {
+		return data, nil
+	}
+	return secret.Data, nil
 }
 
 // MonitorSecretRotation checks if secrets are within their rotation window.

@@ -2,10 +2,15 @@ package bedrock
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 )
 
 // Config holds AWS Bedrock configuration.
@@ -31,6 +36,7 @@ func DefaultConfig() Config {
 // Client provides LLM inference capabilities via AWS Bedrock.
 type Client struct {
 	config      Config
+	brClient    *bedrockruntime.Client
 	totalTokens int64
 	totalCalls  int64
 }
@@ -47,9 +53,20 @@ func NewClient(config Config) (*Client, error) {
 		config.MaxTokens = 2048
 	}
 
+	c := &Client{config: config}
+
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+		awsconfig.WithRegion(config.Region),
+	)
+	if err != nil {
+		log.Printf("[bedrock] WARNING: failed to load AWS config: %v (running in degraded mode)", err)
+	} else {
+		c.brClient = bedrockruntime.NewFromConfig(cfg)
+	}
+
 	log.Printf("[bedrock] Initialized Bedrock client (region: %s, model: %s)",
 		config.Region, config.ModelID)
-	return &Client{config: config}, nil
+	return c, nil
 }
 
 func (c *Client) Name() string { return "aws-bedrock" }
@@ -72,6 +89,12 @@ func (c *Client) Health() struct {
 	Message   string    `json:"message"`
 	LastCheck time.Time `json:"last_check"`
 } {
+	status := "healthy"
+	msg := fmt.Sprintf("model: %s, calls: %d", c.config.ModelID, atomic.LoadInt64(&c.totalCalls))
+	if c.brClient == nil {
+		status = "degraded"
+		msg = "no AWS credentials configured"
+	}
 	return struct {
 		Name      string    `json:"name"`
 		Status    string    `json:"status"`
@@ -79,8 +102,8 @@ func (c *Client) Health() struct {
 		LastCheck time.Time `json:"last_check"`
 	}{
 		Name:      "aws-bedrock",
-		Status:    "healthy",
-		Message:   fmt.Sprintf("model: %s, calls: %d", c.config.ModelID, atomic.LoadInt64(&c.totalCalls)),
+		Status:    status,
+		Message:   msg,
 		LastCheck: time.Now(),
 	}
 }
@@ -120,28 +143,49 @@ func (c *Client) InvokeWithSystem(ctx context.Context, system, prompt string) (s
 }
 
 func (c *Client) invokeModel(ctx context.Context, system, prompt string) (string, error) {
-	// In production: uses aws-sdk-go-v2/service/bedrockruntime.InvokeModel
-	// with the appropriate request body for the Claude Messages API:
-	//
-	// body := map[string]interface{}{
-	//     "anthropic_version": "bedrock-2023-05-31",
-	//     "max_tokens": c.config.MaxTokens,
-	//     "temperature": c.config.Temperature,
-	//     "system": system,
-	//     "messages": []map[string]interface{}{
-	//         {"role": "user", "content": prompt},
-	//     },
-	// }
-	//
-	// output, err := client.InvokeModel(ctx, &bedrockruntime.InvokeModelInput{
-	//     ModelId: &c.config.ModelID,
-	//     Body: jsonBody,
-	//     ContentType: aws.String("application/json"),
-	// })
+	if c.brClient == nil {
+		return "", fmt.Errorf("bedrock client not configured (no AWS credentials)")
+	}
 
-	_ = system
-	_ = prompt
-	return "", fmt.Errorf("bedrock model invocation requires AWS credentials")
+	reqBody := map[string]interface{}{
+		"anthropic_version": "bedrock-2023-05-31",
+		"max_tokens":        c.config.MaxTokens,
+		"temperature":       c.config.Temperature,
+		"messages": []map[string]interface{}{
+			{"role": "user", "content": prompt},
+		},
+	}
+	if system != "" {
+		reqBody["system"] = system
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	output, err := c.brClient.InvokeModel(ctx, &bedrockruntime.InvokeModelInput{
+		ModelId:     &c.config.ModelID,
+		Body:        jsonBody,
+		ContentType: aws.String("application/json"),
+	})
+	if err != nil {
+		return "", fmt.Errorf("bedrock invoke failed: %w", err)
+	}
+
+	var resp struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(output.Body, &resp); err != nil {
+		return "", fmt.Errorf("failed to parse bedrock response: %w", err)
+	}
+	if len(resp.Content) == 0 {
+		return "", fmt.Errorf("empty response from bedrock")
+	}
+
+	return resp.Content[0].Text, nil
 }
 
 // TokenUsage returns the total token usage.

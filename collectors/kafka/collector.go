@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kronveil/kronveil/core/engine"
+	kafkago "github.com/segmentio/kafka-go"
 )
 
 // Config holds the Kafka collector configuration.
@@ -29,15 +30,16 @@ func DefaultConfig() Config {
 
 // Collector gathers telemetry from Apache Kafka clusters.
 type Collector struct {
-	config  Config
-	events  chan *engine.TelemetryEvent
-	lagMon  *LagMonitor
-	mu      sync.RWMutex
-	running bool
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	lastErr error
-	stats   struct {
+	config      Config
+	kafkaClient *kafkago.Client
+	events      chan *engine.TelemetryEvent
+	lagMon      *LagMonitor
+	mu          sync.RWMutex
+	running     bool
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	lastErr     error
+	stats       struct {
 		topicsMonitored int
 		groupsMonitored int
 		eventsEmitted   int64
@@ -46,11 +48,19 @@ type Collector struct {
 
 // New creates a new Kafka collector.
 func New(config Config) *Collector {
-	return &Collector{
+	c := &Collector{
 		config: config,
 		events: make(chan *engine.TelemetryEvent, 500),
 		lagMon: NewLagMonitor(config.LagThreshold),
 	}
+
+	if config.BootstrapServers != "" {
+		c.kafkaClient = &kafkago.Client{
+			Addr: kafkago.TCP(config.BootstrapServers),
+		}
+	}
+
+	return c
 }
 
 // Name returns the collector name.
@@ -108,7 +118,10 @@ func (c *Collector) Health() engine.ComponentHealth {
 	status := "healthy"
 	msg := fmt.Sprintf("monitoring %d topics, %d consumer groups",
 		c.stats.topicsMonitored, c.stats.groupsMonitored)
-	if c.lastErr != nil {
+	if c.kafkaClient == nil {
+		status = "degraded"
+		msg = "no kafka client configured"
+	} else if c.lastErr != nil {
 		status = "degraded"
 		msg = c.lastErr.Error()
 	}
@@ -131,20 +144,63 @@ func (c *Collector) monitorConsumerLag(ctx context.Context) {
 			return
 		case <-ticker.C:
 			for _, group := range c.config.ConsumerGroups {
-				// In production: uses AdminClient to describe consumer groups and get offsets.
-				lag := c.lagMon.GetGroupLag(group)
+				totalLag := c.fetchConsumerLag(ctx, group)
+
 				severity := engine.SeverityInfo
-				if lag > c.config.LagThreshold {
+				if totalLag > c.config.LagThreshold {
 					severity = engine.SeverityHigh
 				}
 				c.emitEvent("consumer_lag", map[string]interface{}{
 					"consumer_group": group,
-					"total_lag":      lag,
+					"total_lag":      totalLag,
 					"threshold":      c.config.LagThreshold,
 				}, severity)
 			}
+			c.mu.Lock()
+			c.stats.groupsMonitored = len(c.config.ConsumerGroups)
+			c.mu.Unlock()
 		}
 	}
+}
+
+func (c *Collector) fetchConsumerLag(ctx context.Context, group string) int64 {
+	if c.kafkaClient == nil {
+		return c.lagMon.GetGroupLag(group)
+	}
+
+	// Fetch committed offsets for the group.
+	offsetResp, err := c.kafkaClient.OffsetFetch(ctx, &kafkago.OffsetFetchRequest{
+		GroupID: group,
+	})
+	if err != nil {
+		log.Printf("[kafka-collector] Failed to fetch offsets for group %s: %v", group, err)
+		return c.lagMon.GetGroupLag(group)
+	}
+
+	var totalLag int64
+	for topic, partitions := range offsetResp.Topics {
+		for _, p := range partitions {
+			// Fetch the latest offset for this partition using a direct connection.
+			conn, err := kafkago.DialLeader(ctx, "tcp", c.config.BootstrapServers, topic, p.Partition)
+			if err != nil {
+				log.Printf("[kafka-collector] Failed to dial leader for %s/%d: %v", topic, p.Partition, err)
+				continue
+			}
+			endOffset, err := conn.ReadLastOffset()
+			conn.Close()
+			if err != nil {
+				continue
+			}
+
+			lag := endOffset - p.CommittedOffset
+			if lag > 0 {
+				totalLag += lag
+				c.lagMon.UpdateLag(group, int32(p.Partition), p.CommittedOffset, endOffset)
+			}
+		}
+	}
+
+	return totalLag
 }
 
 func (c *Collector) monitorPartitionHealth(ctx context.Context) {
@@ -157,12 +213,54 @@ func (c *Collector) monitorPartitionHealth(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			for _, topic := range c.config.MonitoredTopics {
-				c.emitEvent("partition_health", map[string]interface{}{
-					"topic": topic,
-					"type":  "partition_health_check",
-				}, engine.SeverityInfo)
+			if c.kafkaClient == nil {
+				for _, topic := range c.config.MonitoredTopics {
+					c.emitEvent("partition_health", map[string]interface{}{
+						"topic": topic,
+						"type":  "partition_health_check",
+					}, engine.SeverityInfo)
+				}
+				continue
 			}
+
+			// Fetch metadata to check ISR counts and under-replicated partitions.
+			conn, err := kafkago.Dial("tcp", c.config.BootstrapServers)
+			if err != nil {
+				c.mu.Lock()
+				c.lastErr = err
+				c.mu.Unlock()
+				log.Printf("[kafka-collector] Failed to connect to Kafka: %v", err)
+				continue
+			}
+
+			for _, topic := range c.config.MonitoredTopics {
+				partitions, err := conn.ReadPartitions(topic)
+				if err != nil {
+					log.Printf("[kafka-collector] Failed to read partitions for %s: %v", topic, err)
+					continue
+				}
+
+				c.mu.Lock()
+				c.stats.topicsMonitored = len(c.config.MonitoredTopics)
+				c.mu.Unlock()
+
+				for _, p := range partitions {
+					underReplicated := len(p.Replicas) - len(p.Isr)
+					severity := engine.SeverityInfo
+					if underReplicated > 0 {
+						severity = engine.SeverityHigh
+					}
+					c.emitEvent("partition_health", map[string]interface{}{
+						"topic":            topic,
+						"partition":        p.ID,
+						"leader":           p.Leader.ID,
+						"replicas":         len(p.Replicas),
+						"isr":              len(p.Isr),
+						"under_replicated": underReplicated,
+					}, severity)
+				}
+			}
+			conn.Close()
 		}
 	}
 }

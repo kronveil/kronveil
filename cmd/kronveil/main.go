@@ -10,7 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	grpcserver "github.com/kronveil/kronveil/api/grpc"
 	"github.com/kronveil/kronveil/api/rest"
+	cloudcollector "github.com/kronveil/kronveil/collectors/cloud"
 	k8scollector "github.com/kronveil/kronveil/collectors/kubernetes"
 	kafkacollector "github.com/kronveil/kronveil/collectors/kafka"
 	"github.com/kronveil/kronveil/core/engine"
@@ -22,8 +24,12 @@ import (
 	"github.com/kronveil/kronveil/intelligence/rootcause"
 	"github.com/kronveil/kronveil/internal/config"
 	"github.com/kronveil/kronveil/internal/version"
+	awssecrets "github.com/kronveil/kronveil/integrations/aws-secrets"
+	"github.com/kronveil/kronveil/integrations/bedrock"
 	otelexporter "github.com/kronveil/kronveil/integrations/otel"
 	promexporter "github.com/kronveil/kronveil/integrations/prometheus"
+	slacknotifier "github.com/kronveil/kronveil/integrations/slack"
+	vaultclient "github.com/kronveil/kronveil/integrations/vault"
 )
 
 func main() {
@@ -102,6 +108,41 @@ func main() {
 
 	metricsRecorder := metrics.NewCompositeRecorder(recorders...)
 
+	// Register Vault integration.
+	if cfg.Integrations.Vault.Enabled {
+		vc, err := vaultclient.NewClient(vaultclient.Config{
+			Address:    cfg.Integrations.Vault.Address,
+			AuthMethod: cfg.Integrations.Vault.AuthMethod,
+		})
+		if err != nil {
+			log.Printf("WARNING: Failed to create Vault client: %v", err)
+		} else {
+			if err := registry.RegisterIntegration(vc); err != nil {
+				log.Fatalf("Failed to register Vault integration: %v", err)
+			}
+			log.Printf("  Vault: %s", cfg.Integrations.Vault.Address)
+		}
+	}
+
+	// Register AWS Secrets Manager integration.
+	if cfg.Integrations.AWSSecrets.Enabled {
+		rotationWindow, _ := time.ParseDuration(cfg.Integrations.AWSSecrets.RotationWindow)
+		asc, err := awssecrets.NewClient(awssecrets.Config{
+			Region:         cfg.Integrations.AWSSecrets.Region,
+			SecretPrefix:   cfg.Integrations.AWSSecrets.SecretPrefix,
+			RotationWindow: rotationWindow,
+			CacheEnabled:   cfg.Integrations.AWSSecrets.CacheEnabled,
+		})
+		if err != nil {
+			log.Printf("WARNING: Failed to create AWS Secrets Manager client: %v", err)
+		} else {
+			if err := registry.RegisterIntegration(asc); err != nil {
+				log.Fatalf("Failed to register AWS Secrets Manager: %v", err)
+			}
+			log.Printf("  AWS Secrets Manager: %s", cfg.Integrations.AWSSecrets.Region)
+		}
+	}
+
 	// Register collectors.
 	if cfg.Collectors.Kubernetes.Enabled {
 		k8s := k8scollector.New(k8scollector.Config{
@@ -127,6 +168,51 @@ func main() {
 		}
 	}
 
+	// Register cloud collector.
+	if cfg.Collectors.Cloud.Enabled {
+		cc, err := cloudcollector.New(cloudcollector.Config{
+			Provider: cloudcollector.ProviderType(cfg.Collectors.Cloud.Provider),
+			Regions:  cfg.Collectors.Cloud.Regions,
+		})
+		if err != nil {
+			log.Printf("WARNING: Failed to create cloud collector: %v", err)
+		} else {
+			if err := registry.RegisterCollector(cc); err != nil {
+				log.Fatalf("Failed to register cloud collector: %v", err)
+			}
+		}
+	}
+
+	// Create Bedrock LLM provider.
+	var llmProvider engine.LLMProvider
+	brClient, err := bedrock.NewClient(bedrock.Config{
+		Region:      cfg.Bedrock.Region,
+		ModelID:     cfg.Bedrock.ModelID,
+		MaxTokens:   cfg.Bedrock.MaxTokens,
+		Temperature: cfg.Bedrock.Temperature,
+	})
+	if err != nil {
+		log.Printf("WARNING: Failed to create Bedrock client: %v", err)
+	} else {
+		llmProvider = brClient
+	}
+
+	// Create Slack notifier.
+	var notifiers []engine.Notifier
+	if cfg.Integrations.Slack.Enabled && cfg.Integrations.Slack.BotToken != "" {
+		sn, err := slacknotifier.NewNotifier(slacknotifier.Config{
+			BotToken:       cfg.Integrations.Slack.BotToken,
+			DefaultChannel: cfg.Integrations.Slack.DefaultChannel,
+			Channels:       cfg.Integrations.Slack.Channels,
+		})
+		if err != nil {
+			log.Printf("WARNING: Failed to create Slack notifier: %v", err)
+		} else {
+			notifiers = append(notifiers, sn)
+			log.Printf("  Slack: %s", cfg.Integrations.Slack.DefaultChannel)
+		}
+	}
+
 	// Register intelligence modules.
 	detector := anomaly.New(anomaly.Config{
 		WindowSize:      cfg.Intelligence.AnomalyDetection.WindowSize,
@@ -142,14 +228,14 @@ func main() {
 		AutoRemediate: cfg.Intelligence.Remediation.AutoRemediate,
 		DryRun:        cfg.Intelligence.Remediation.DryRun,
 		MaxRetries:    cfg.Intelligence.Remediation.MaxRetries,
-	}, nil, nil)
+	}, notifiers, llmProvider)
 	responder.SetMetrics(metricsRecorder)
 	if err := registry.RegisterModule(responder); err != nil {
 		log.Fatalf("Failed to register incident responder: %v", err)
 	}
 
 	depGraph := rootcause.NewDependencyGraph()
-	rcAnalyzer := rootcause.New(depGraph, nil)
+	rcAnalyzer := rootcause.New(depGraph, llmProvider)
 	if err := registry.RegisterModule(rcAnalyzer); err != nil {
 		log.Fatalf("Failed to register root cause analyzer: %v", err)
 	}
@@ -178,9 +264,18 @@ func main() {
 		log.Fatalf("Failed to start REST API: %v", err)
 	}
 
+	// Start gRPC server.
+	grpcSrv := grpcserver.NewServer(grpcserver.Config{
+		Port: cfg.API.GRPCPort,
+	}, eng, responder)
+	if err := grpcSrv.Start(); err != nil {
+		log.Fatalf("Failed to start gRPC server: %v", err)
+	}
+
 	log.Println()
 	log.Println("Kronveil agent is running. Press Ctrl+C to stop.")
 	log.Printf("  REST API:   http://localhost:%d", cfg.API.RESTPort)
+	log.Printf("  gRPC API:   localhost:%d", cfg.API.GRPCPort)
 	log.Printf("  Dashboard:  http://localhost:%d", cfg.API.RESTPort)
 
 	// Wait for shutdown signal.
@@ -192,6 +287,9 @@ func main() {
 	log.Println("Shutting down Kronveil agent...")
 
 	cancel()
+	if err := grpcSrv.Stop(); err != nil {
+		log.Printf("Error stopping gRPC server: %v", err)
+	}
 	if err := apiServer.Stop(); err != nil {
 		log.Printf("Error stopping API server: %v", err)
 	}

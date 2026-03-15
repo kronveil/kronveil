@@ -2,11 +2,16 @@ package awssecrets
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	smtypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	"github.com/kronveil/kronveil/core/engine"
 )
 
@@ -22,13 +27,20 @@ type Config struct {
 
 // Client integrates with AWS Secrets Manager for secret retrieval and rotation monitoring.
 type Client struct {
-	config  Config
-	mu      sync.RWMutex
-	secrets map[string]*SecretEntry
-	lastErr error
-	running bool
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	config   Config
+	smClient *secretsmanager.Client
+	mu       sync.RWMutex
+	secrets  map[string]*SecretEntry
+	cache    map[string]*cacheEntry
+	lastErr  error
+	running  bool
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+}
+
+type cacheEntry struct {
+	data      map[string]interface{}
+	fetchedAt time.Time
 }
 
 // SecretEntry tracks a monitored secret in AWS Secrets Manager.
@@ -56,18 +68,31 @@ func NewClient(config Config) (*Client, error) {
 		config.CacheTTL = 5 * time.Minute
 	}
 
-	return &Client{
+	c := &Client{
 		config:  config,
 		secrets: make(map[string]*SecretEntry),
-	}, nil
+		cache:   make(map[string]*cacheEntry),
+	}
+
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+		awsconfig.WithRegion(config.Region),
+	)
+	if err != nil {
+		log.Printf("[aws-secrets] WARNING: failed to load AWS config: %v (running in degraded mode)", err)
+	} else {
+		c.smClient = secretsmanager.NewFromConfig(cfg)
+	}
+
+	return c, nil
 }
 
 func (c *Client) Name() string { return "aws-secrets-manager" }
 
 func (c *Client) Initialize(ctx context.Context) error {
-	// In production: creates AWS SDK v2 secretsmanager client using
-	// aws.config.LoadDefaultConfig(ctx, config.WithRegion(c.config.Region)).
-	// Supports IAM roles, IRSA (EKS), and environment credentials.
+	if c.smClient == nil {
+		log.Printf("[aws-secrets] AWS Secrets Manager initialized in degraded mode (no credentials)")
+		return nil
+	}
 	log.Printf("[aws-secrets] AWS Secrets Manager initialized (region: %s, prefix: %s)",
 		c.config.Region, c.config.SecretPrefix)
 	return nil
@@ -115,7 +140,10 @@ func (c *Client) Health() engine.ComponentHealth {
 	defer c.mu.RUnlock()
 	status := "healthy"
 	msg := fmt.Sprintf("monitoring %d secrets in %s", len(c.secrets), c.config.Region)
-	if c.lastErr != nil {
+	if c.smClient == nil {
+		status = "degraded"
+		msg = "no AWS credentials configured"
+	} else if c.lastErr != nil {
 		status = "degraded"
 		msg = c.lastErr.Error()
 	}
@@ -129,24 +157,94 @@ func (c *Client) Health() engine.ComponentHealth {
 
 // GetSecret retrieves a secret value from AWS Secrets Manager.
 func (c *Client) GetSecret(ctx context.Context, secretName string) (map[string]interface{}, error) {
-	// In production: uses secretsmanager.GetSecretValue with caching.
-	// sdk: client.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-	//     SecretId: aws.String(secretName),
-	// })
-	return nil, fmt.Errorf("aws secrets manager read requires configured credentials")
+	if c.smClient == nil {
+		return nil, fmt.Errorf("aws secrets manager client not configured")
+	}
+
+	// Check cache first.
+	if c.config.CacheEnabled {
+		c.mu.RLock()
+		if entry, ok := c.cache[secretName]; ok && time.Since(entry.fetchedAt) < c.config.CacheTTL {
+			c.mu.RUnlock()
+			return entry.data, nil
+		}
+		c.mu.RUnlock()
+	}
+
+	output, err := c.smClient.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String(secretName),
+	})
+	if err != nil {
+		c.mu.Lock()
+		c.lastErr = err
+		c.mu.Unlock()
+		return nil, fmt.Errorf("failed to get secret %s: %w", secretName, err)
+	}
+
+	var result map[string]interface{}
+	if output.SecretString != nil {
+		if err := json.Unmarshal([]byte(*output.SecretString), &result); err != nil {
+			result = map[string]interface{}{"value": *output.SecretString}
+		}
+	}
+
+	// Update cache.
+	if c.config.CacheEnabled {
+		c.mu.Lock()
+		c.cache[secretName] = &cacheEntry{data: result, fetchedAt: time.Now()}
+		c.mu.Unlock()
+	}
+
+	return result, nil
 }
 
 // ListSecrets lists secrets matching the configured prefix.
 func (c *Client) ListSecrets(ctx context.Context) ([]*SecretEntry, error) {
-	// In production: uses secretsmanager.ListSecrets with prefix filter.
-	// sdk: client.ListSecrets(ctx, &secretsmanager.ListSecretsInput{
-	//     Filters: []types.Filter{{Key: types.FilterNameStringTypeName, Values: []string{c.config.SecretPrefix}}},
-	// })
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	result := make([]*SecretEntry, 0, len(c.secrets))
-	for _, s := range c.secrets {
-		result = append(result, s)
+	if c.smClient == nil {
+		// Fallback to locally tracked secrets.
+		c.mu.RLock()
+		defer c.mu.RUnlock()
+		result := make([]*SecretEntry, 0, len(c.secrets))
+		for _, s := range c.secrets {
+			result = append(result, s)
+		}
+		return result, nil
+	}
+
+	input := &secretsmanager.ListSecretsInput{}
+	if c.config.SecretPrefix != "" {
+		input.Filters = []smtypes.Filter{
+			{Key: smtypes.FilterNameStringTypeName, Values: []string{c.config.SecretPrefix}},
+		}
+	}
+
+	var result []*SecretEntry
+	paginator := secretsmanager.NewListSecretsPaginator(c.smClient, input)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			c.mu.Lock()
+			c.lastErr = err
+			c.mu.Unlock()
+			return nil, fmt.Errorf("failed to list secrets: %w", err)
+		}
+		for _, s := range page.SecretList {
+			entry := &SecretEntry{
+				Name:            aws.ToString(s.Name),
+				ARN:             aws.ToString(s.ARN),
+				RotationEnabled: aws.ToBool(s.RotationEnabled),
+			}
+			if s.LastRotatedDate != nil {
+				entry.LastRotated = *s.LastRotatedDate
+			}
+			if s.LastAccessedDate != nil {
+				entry.LastAccessed = *s.LastAccessedDate
+			}
+			if s.NextRotationDate != nil {
+				entry.NextRotation = s.NextRotationDate
+			}
+			result = append(result, entry)
+		}
 	}
 	return result, nil
 }
@@ -176,10 +274,10 @@ func (c *Client) CheckRotation(ctx context.Context) []SecretEntry {
 
 // TriggerRotation initiates secret rotation via the configured Lambda function.
 func (c *Client) TriggerRotation(ctx context.Context, secretName string) error {
-	// In production: uses secretsmanager.RotateSecret.
-	// sdk: client.RotateSecret(ctx, &secretsmanager.RotateSecretInput{
-	//     SecretId: aws.String(secretName),
-	// })
+	if c.smClient == nil {
+		return fmt.Errorf("aws secrets manager client not configured")
+	}
+
 	c.mu.RLock()
 	entry, ok := c.secrets[secretName]
 	c.mu.RUnlock()
@@ -189,6 +287,13 @@ func (c *Client) TriggerRotation(ctx context.Context, secretName string) error {
 	}
 	if entry.RotationLambdaARN == "" {
 		return fmt.Errorf("no rotation lambda configured for %s", secretName)
+	}
+
+	_, err := c.smClient.RotateSecret(ctx, &secretsmanager.RotateSecretInput{
+		SecretId: aws.String(secretName),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to trigger rotation for %s: %w", secretName, err)
 	}
 
 	log.Printf("[aws-secrets] Triggered rotation for secret: %s", secretName)
