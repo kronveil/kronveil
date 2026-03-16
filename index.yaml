@@ -1,0 +1,27 @@
+apiVersion: v1
+entries:
+  kronveil:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2026-03-15T21:34:39.955571-05:00"
+    description: AI-powered infrastructure observability agent
+    digest: febb21ff08f4f6bfbd4735aecfc0f71afe7622b38ac993cedd551fd35f44ce1b
+    home: https://github.com/kronveil/kronveil
+    keywords:
+    - observability
+    - ai
+    - kubernetes
+    - kafka
+    - monitoring
+    - incident-response
+    maintainers:
+    - name: Kronveil
+      url: https://github.com/kronveil
+    name: kronveil
+    sources:
+    - https://github.com/kronveil/kronveil
+    type: application
+    urls:
+    - https://kronveil.github.io/kronveil/kronveil-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-03-15T21:34:39.954775-05:00"
