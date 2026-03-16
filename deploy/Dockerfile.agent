@@ -1,4 +1,4 @@
-FROM golang:1.25.8-alpine3.21 AS builder
+FROM golang:1.25.8-alpine3.23 AS builder
 
 RUN apk add --no-cache git ca-certificates
 
@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
       -X github.com/kronveil/kronveil/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o /kronveil ./cmd/kronveil
 
-FROM alpine:3.21
+FROM alpine:3.23
 
 RUN apk add --no-cache ca-certificates tzdata curl && \
     addgroup -g 1000 kronveil && \
