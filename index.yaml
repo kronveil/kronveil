@@ -3,9 +3,9 @@ entries:
   kronveil:
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2026-03-15T21:38:01.565273-05:00"
+    created: "2026-03-16T03:04:56.561157151Z"
     description: AI-powered infrastructure observability agent
-    digest: febb21ff08f4f6bfbd4735aecfc0f71afe7622b38ac993cedd551fd35f44ce1b
+    digest: 81a83beffab4ab9b471577cec336555e97d6f8f93656c774b2a3c77e1f10002d
     home: https://github.com/kronveil/kronveil
     keywords:
     - observability
@@ -24,4 +24,4 @@ entries:
     urls:
     - https://kronveil.github.io/kronveil/kronveil-0.1.0.tgz
     version: 0.1.0
-generated: "2026-03-15T21:38:01.563324-05:00"
+generated: "2026-03-16T03:04:56.560403483Z"
