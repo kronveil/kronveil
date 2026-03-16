@@ -298,7 +298,7 @@ Kronveil combines:
 ### Install via Helm
 
 ```bash
-helm repo add kronveil https://charts.kronveil.io
+helm repo add kronveil https://kronveil.github.io/kronveil
 helm repo update
 
 helm install kronveil kronveil/kronveil \

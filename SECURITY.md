@@ -11,6 +11,6 @@
 
 Please **DO NOT** file a public GitHub issue for security vulnerabilities.
 
-Email: security@kronveil.io
+Please report vulnerabilities via [GitHub Security Advisories](https://github.com/kronveil/kronveil/security/advisories/new).
 
 We will respond within 48 hours and coordinate a fix + disclosure timeline with you.
