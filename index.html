@@ -1,1 +1,295 @@
-# Kronveil Helm Chart Repository
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kronveil Helm Chart Repository</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+      background: #0a0e17;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hero {
+      text-align: center;
+      padding: 80px 24px 40px;
+      max-width: 720px;
+    }
+
+    .logo {
+      font-size: 48px;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+
+    .tagline {
+      font-size: 1.1rem;
+      color: #94a3b8;
+      margin-bottom: 32px;
+    }
+
+    .badge-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 48px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border: 1px solid #1e293b;
+      background: #111827;
+      color: #94a3b8;
+    }
+
+    .badge .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+    }
+
+    .card {
+      background: #111827;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 640px;
+      width: 100%;
+      margin: 0 24px 24px;
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 16px;
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .step-num {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    .step-label {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+
+    pre {
+      background: #0a0e17;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+
+    code {
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      color: #e2e8f0;
+    }
+
+    .cmd { color: #60a5fa; }
+    .flag { color: #a78bfa; }
+    .val { color: #34d399; }
+    .comment { color: #475569; }
+
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 8px;
+    }
+
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: #cbd5e1;
+    }
+
+    .feature-icon {
+      font-size: 1.2rem;
+    }
+
+    .links {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      padding: 32px 24px 60px;
+    }
+
+    .links a {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-secondary {
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+    }
+
+    .btn-secondary:hover {
+      background: #334155;
+    }
+
+    .footer {
+      color: #475569;
+      font-size: 0.8rem;
+      padding-bottom: 40px;
+    }
+
+    .footer a {
+      color: #60a5fa;
+      text-decoration: none;
+    }
+
+    @media (max-width: 600px) {
+      h1 { font-size: 1.6rem; }
+      .features { grid-template-columns: 1fr; }
+      .links { flex-direction: column; align-items: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <div class="logo">&#128065;</div>
+    <h1>Kronveil</h1>
+    <p class="tagline">AI-powered infrastructure observability agent</p>
+    <div class="badge-row">
+      <span class="badge"><span class="dot"></span> Chart v0.1.0</span>
+      <span class="badge">Helm 3.x</span>
+      <span class="badge">Kubernetes 1.26+</span>
+      <span class="badge">Apache 2.0</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Quick Install</h2>
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <div class="step-label">Add the Helm repository</div>
+        <pre><code><span class="cmd">helm repo add</span> kronveil https://kronveil.github.io/kronveil
+<span class="cmd">helm repo update</span></code></pre>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <div class="step-label">Install Kronveil</div>
+        <pre><code><span class="cmd">helm install</span> kronveil kronveil/kronveil \
+  <span class="flag">--namespace</span> <span class="val">kronveil</span> \
+  <span class="flag">--create-namespace</span> \
+  <span class="flag">--set</span> <span class="val">bedrock.region=us-east-1</span> \
+  <span class="flag">--set</span> <span class="val">collectors.kubernetes.enabled=true</span></code></pre>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <div class="step-label">Verify</div>
+        <pre><code><span class="cmd">kubectl get pods</span> <span class="flag">-n</span> <span class="val">kronveil</span>
+<span class="cmd">kubectl port-forward</span> svc/kronveil-agent <span class="val">8080:8080</span> <span class="flag">-n</span> <span class="val">kronveil</span></code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>What's Included</h2>
+    <div class="features">
+      <div class="feature"><span class="feature-icon">&#129504;</span> LLM-powered root cause analysis</div>
+      <div class="feature"><span class="feature-icon">&#128225;</span> Kubernetes & Kafka collectors</div>
+      <div class="feature"><span class="feature-icon">&#128302;</span> Predictive anomaly detection</div>
+      <div class="feature"><span class="feature-icon">&#9889;</span> Auto-remediation engine</div>
+      <div class="feature"><span class="feature-icon">&#128274;</span> Vault & Secrets Manager</div>
+      <div class="feature"><span class="feature-icon">&#128172;</span> Slack & PagerDuty alerts</div>
+      <div class="feature"><span class="feature-icon">&#9729;&#65039;</span> AWS, Azure & GCP support</div>
+      <div class="feature"><span class="feature-icon">&#128202;</span> Prometheus metrics export</div>
+    </div>
+  </div>
+
+  <div class="links">
+    <a href="https://github.com/kronveil/kronveil" class="btn-primary">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub Repository
+    </a>
+    <a href="https://github.com/kronveil/kronveil/blob/main/README.md" class="btn-secondary">
+      Documentation
+    </a>
+  </div>
+
+  <div class="footer">
+    Built by <a href="https://github.com/sankar276">Ramasankar Molleti</a>
+  </div>
+
+</body>
+</html>
