@@ -184,12 +184,12 @@ func (a *Analyzer) heuristicAnalysis(service string, chain, impacted []string, e
 func buildAnalysisPrompt(service string, chain, impacted []string, evidence []Evidence, events []engine.TelemetryEvent) string {
 	var b strings.Builder
 	b.WriteString("## Incident Analysis Request\n\n")
-	b.WriteString(fmt.Sprintf("**Failing Service:** %s\n\n", service))
+	fmt.Fprintf(&b, "**Failing Service:** %s\n\n", service)
 
 	if len(chain) > 0 {
 		b.WriteString("**Dependency Chain:**\n")
 		for _, s := range chain {
-			b.WriteString(fmt.Sprintf("- %s\n", s))
+			fmt.Fprintf(&b, "- %s\n", s)
 		}
 		b.WriteString("\n")
 	}
@@ -197,15 +197,15 @@ func buildAnalysisPrompt(service string, chain, impacted []string, evidence []Ev
 	if len(impacted) > 0 {
 		b.WriteString("**Impacted Services:**\n")
 		for _, s := range impacted {
-			b.WriteString(fmt.Sprintf("- %s\n", s))
+			fmt.Fprintf(&b, "- %s\n", s)
 		}
 		b.WriteString("\n")
 	}
 
 	b.WriteString("**Events:**\n")
 	for _, e := range events {
-		b.WriteString(fmt.Sprintf("- [%s] %s from %s: %v\n",
-			e.Severity, e.Type, e.Source, e.Payload))
+		fmt.Fprintf(&b, "- [%s] %s from %s: %v\n",
+			e.Severity, e.Type, e.Source, e.Payload)
 	}
 
 	b.WriteString("\nProvide: 1) Root cause summary 2) Causal chain 3) Recommended remediation")

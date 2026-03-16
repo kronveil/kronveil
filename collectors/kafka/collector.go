@@ -187,7 +187,7 @@ func (c *Collector) fetchConsumerLag(ctx context.Context, group string) int64 {
 				continue
 			}
 			endOffset, err := conn.ReadLastOffset()
-			conn.Close()
+			_ = conn.Close()
 			if err != nil {
 				continue
 			}
@@ -260,7 +260,7 @@ func (c *Collector) monitorPartitionHealth(ctx context.Context) {
 					}, severity)
 				}
 			}
-			conn.Close()
+			_ = conn.Close()
 		}
 	}
 }

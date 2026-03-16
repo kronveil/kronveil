@@ -201,10 +201,7 @@ func (d *Detector) analyzeSignal(key string, value float64, event *engine.Teleme
 
 	// Check if this is a predicted anomaly (trend-based).
 	trend := LinearTrend(values)
-	predicted := false
-	if math.Abs(trend) > StdDev(values)*0.1 {
-		predicted = true
-	}
+	predicted := math.Abs(trend) > StdDev(values)*0.1
 
 	// Determine severity based on score.
 	severity := engine.SeverityLow

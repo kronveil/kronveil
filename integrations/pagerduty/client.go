@@ -131,7 +131,7 @@ func (c *Client) sendEvent(ctx context.Context, payload map[string]interface{}) 
 	if err != nil {
 		return fmt.Errorf("failed to send PagerDuty event: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("PagerDuty API error: %d", resp.StatusCode)

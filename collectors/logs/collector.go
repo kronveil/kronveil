@@ -133,7 +133,7 @@ func (c *Collector) tailFile(ctx context.Context, source LogSource) {
 		log.Printf("[log-collector] Cannot open %s: %v", source.Path, err)
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Seek to end of file for tail behavior.
 	if _, err := file.Seek(0, 2); err != nil {

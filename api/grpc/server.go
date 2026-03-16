@@ -1,3 +1,4 @@
+// Package grpc provides the gRPC server for the Kronveil agent API.
 package grpc
 
 import (
