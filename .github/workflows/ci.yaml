@@ -98,7 +98,7 @@ jobs:
           load: true
           tags: kronveil/agent:latest
       - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: kronveil/agent:latest
           format: table
