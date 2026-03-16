@@ -18,7 +18,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 FROM alpine:3.23
 
-RUN apk add --no-cache ca-certificates tzdata curl && \
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates tzdata curl && \
     addgroup -g 1000 kronveil && \
     adduser -u 1000 -G kronveil -s /bin/sh -D kronveil
 
