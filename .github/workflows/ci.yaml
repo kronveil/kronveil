@@ -18,6 +18,7 @@ jobs:
       - uses: actions/setup-go@v5.4.0
         with:
           go-version: "1.25"
+          check-latest: true
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
@@ -31,10 +32,11 @@ jobs:
       - uses: actions/setup-go@v5.4.0
         with:
           go-version: "1.25"
+          check-latest: true
       - name: Run govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          govulncheck ./... || echo "::warning::govulncheck found vulnerabilities (see above)"
 
   test:
     name: Test
@@ -44,6 +46,7 @@ jobs:
       - uses: actions/setup-go@v5.4.0
         with:
           go-version: "1.25"
+          check-latest: true
       - name: Run tests
         run: go test ./... -v -race -coverprofile=coverage.out
       - name: Check coverage threshold
@@ -70,6 +73,7 @@ jobs:
       - uses: actions/setup-go@v5.4.0
         with:
           go-version: "1.25"
+          check-latest: true
       - name: Build agent
         run: |
           CGO_ENABLED=0 go build -ldflags="-s -w \

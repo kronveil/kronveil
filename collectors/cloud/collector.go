@@ -1,3 +1,4 @@
+// Package cloud provides multi-cloud infrastructure metric collectors.
 package cloud
 
 import (
