@@ -1,3 +1,4 @@
+// Package anomaly provides statistical anomaly detection.
 package anomaly
 
 import (

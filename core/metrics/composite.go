@@ -1,3 +1,4 @@
+// Package metrics provides composite metric aggregation.
 package metrics
 
 import "github.com/kronveil/kronveil/core/engine"

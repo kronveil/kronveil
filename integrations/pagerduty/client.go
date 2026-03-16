@@ -1,3 +1,4 @@
+// Package pagerduty provides PagerDuty incident alerting integration.
 package pagerduty
 
 import (

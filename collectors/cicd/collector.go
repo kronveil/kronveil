@@ -1,3 +1,4 @@
+// Package cicd collects telemetry from CI/CD pipelines.
 package cicd
 
 import (

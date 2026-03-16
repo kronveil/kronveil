@@ -1,3 +1,4 @@
+// Package health provides health check aggregation.
 package health
 
 import (

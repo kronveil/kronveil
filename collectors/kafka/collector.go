@@ -1,3 +1,4 @@
+// Package kafka collects consumer lag and partition health metrics from Kafka clusters.
 package kafka
 
 import (

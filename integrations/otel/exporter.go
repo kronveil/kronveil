@@ -1,3 +1,4 @@
+// Package otel provides OpenTelemetry metrics export.
 package otel
 
 import (

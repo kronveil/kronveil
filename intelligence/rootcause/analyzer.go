@@ -1,3 +1,4 @@
+// Package rootcause provides LLM-powered root cause analysis.
 package rootcause
 
 import (

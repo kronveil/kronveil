@@ -1,3 +1,4 @@
+// Package kubernetes collects pod, node, and event telemetry from Kubernetes clusters.
 package kubernetes
 
 import (

@@ -1,3 +1,4 @@
+// Package capacity provides resource capacity forecasting and right-sizing.
 package capacity
 
 import (

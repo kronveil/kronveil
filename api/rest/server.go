@@ -1,3 +1,4 @@
+// Package rest provides the HTTP REST API server for the Kronveil agent.
 package rest
 
 import (

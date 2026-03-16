@@ -1,3 +1,4 @@
+// Package awssecrets provides AWS Secrets Manager integration.
 package awssecrets
 
 import (

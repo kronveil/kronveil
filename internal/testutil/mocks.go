@@ -1,3 +1,4 @@
+// Package testutil provides test helpers and mock implementations.
 package testutil
 
 import (

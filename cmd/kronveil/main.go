@@ -1,3 +1,4 @@
+// Kronveil agent entry point.
 package main
 
 import (

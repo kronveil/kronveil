@@ -1,3 +1,4 @@
+// Package slack provides Slack notification integration.
 package slack
 
 import (

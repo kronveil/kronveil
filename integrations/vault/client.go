@@ -1,3 +1,4 @@
+// Package vault provides HashiCorp Vault integration.
 package vault
 
 import (

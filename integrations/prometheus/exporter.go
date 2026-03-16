@@ -1,3 +1,4 @@
+// Package prometheus provides Prometheus metrics export.
 package prometheus
 
 import (

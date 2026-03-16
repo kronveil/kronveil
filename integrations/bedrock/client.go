@@ -1,3 +1,4 @@
+// Package bedrock provides AWS Bedrock LLM integration for root cause analysis.
 package bedrock
 
 import (

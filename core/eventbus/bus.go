@@ -1,3 +1,4 @@
+// Package eventbus provides the Kafka-backed event bus for Kronveil.
 package eventbus
 
 import (

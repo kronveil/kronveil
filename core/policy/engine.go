@@ -1,3 +1,4 @@
+// Package policy provides the policy evaluation engine.
 package policy
 
 import (

@@ -1,3 +1,4 @@
+// Package incident provides incident lifecycle management and auto-remediation.
 package incident
 
 import (

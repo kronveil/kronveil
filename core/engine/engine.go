@@ -1,3 +1,4 @@
+// Package engine provides the central orchestration engine for Kronveil.
 package engine
 
 import (

@@ -1,3 +1,4 @@
+// Package logs collects and parses application log streams.
 package logs
 
 import (
