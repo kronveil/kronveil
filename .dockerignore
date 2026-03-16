@@ -22,7 +22,8 @@ npm-debug.log
 dashboard/node_modules
 dashboard/dist
 
-deploy/
+deploy/docker-compose.yaml
+deploy/Dockerfile.*
 helm/
 docs/
 
