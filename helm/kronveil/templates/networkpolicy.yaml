@@ -1,0 +1,49 @@
+{{- if .Values.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kronveil.fullname" . }}
+  labels:
+    {{- include "kronveil.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "kronveil.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow Prometheus scraping
+    - ports:
+        - port: {{ .Values.integrations.prometheus.port }}
+          protocol: TCP
+    # Allow REST API access
+    - ports:
+        - port: {{ .Values.api.restPort }}
+          protocol: TCP
+    # Allow gRPC access
+    - ports:
+        - port: {{ .Values.api.grpcPort }}
+          protocol: TCP
+  egress:
+    # Allow DNS resolution
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow HTTPS outbound (AWS APIs, Slack, PagerDuty)
+    - ports:
+        - port: 443
+          protocol: TCP
+    # Allow Kafka
+    - ports:
+        - port: 9092
+          protocol: TCP
+    # Allow Kubernetes API server
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
+{{- end }}

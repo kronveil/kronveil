@@ -7,19 +7,20 @@ on:
       - "helm/**"
 
 permissions:
-  contents: write
-  pages: write
+  contents: read
 
 jobs:
   publish:
     name: Package & Publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Scoped to this job only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v4.3.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -29,7 +30,7 @@ jobs:
           helm package helm/kronveil/ -d .chart-release/
 
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
         with:
           ref: gh-pages
           path: gh-pages

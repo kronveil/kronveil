@@ -1,20 +1,18 @@
 {{- if .Values.rbac.create -}}
+# Read-only ClusterRole for observability (metrics, events, pod status)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "kronveil.fullname" . }}
+  name: {{ include "kronveil.fullname" . }}-observer
   labels:
     {{- include "kronveil.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
-    resources: ["pods", "nodes", "services", "endpoints", "events", "namespaces", "configmaps", "secrets"]
+    resources: ["pods", "nodes", "services", "endpoints", "events", "namespaces", "configmaps"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["delete"]  # For pod restart remediation
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets", "replicasets", "daemonsets"]
-    verbs: ["get", "list", "watch", "update", "patch"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list", "watch"]
@@ -28,13 +26,45 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "kronveil.fullname" . }}
+  name: {{ include "kronveil.fullname" . }}-observer
   labels:
     {{- include "kronveil.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "kronveil.fullname" . }}
+  name: {{ include "kronveil.fullname" . }}-observer
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kronveil.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+# Namespace-scoped Role for remediation actions (only in release namespace)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kronveil.fullname" . }}-remediator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kronveil.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]  # Pod restart remediation
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["update", "patch"]  # Rollback/scale remediation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kronveil.fullname" . }}-remediator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kronveil.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kronveil.fullname" . }}-remediator
 subjects:
   - kind: ServiceAccount
     name: {{ include "kronveil.serviceAccountName" . }}

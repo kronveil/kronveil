@@ -2,16 +2,20 @@ replicaCount: 1
 
 image:
   repository: kronveil/agent
-  pullPolicy: IfNotPresent
-  tag: ""
+  pullPolicy: Always
+  tag: "0.1.0"
 
 imagePullSecrets: []
+  # - name: regcred  # Required for private registries
 nameOverride: ""
 fullnameOverride: ""
 
 serviceAccount:
   create: true
+  automountServiceAccountToken: true  # Required for K8s API access
   annotations: {}
+    # eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/kronveil
+    # iam.gke.io/gcp-service-account: kronveil@project.iam.gserviceaccount.com
   name: ""
 
 rbac:
@@ -26,6 +30,10 @@ bedrock:
   modelId: "anthropic.claude-3-sonnet-20240229-v1:0"
   maxTokens: 2048
   temperature: 0.3
+  # Credentials should be provided via IAM roles (IRSA/Pod Identity), NOT values:
+  # credentialsSecret:
+  #   name: bedrock-credentials
+  #   key: aws-access-key
 
 kafka:
   bootstrapServers: "kafka:9092"
@@ -57,8 +65,8 @@ intelligence:
     windowSize: 300
     zscoreThreshold: 3.0
   remediation:
-    autoRemediate: true
-    dryRun: false
+    autoRemediate: false  # Safe default: require explicit opt-in
+    dryRun: true          # Safe default: dry-run mode until operator confirms
     maxRetries: 3
 
 integrations:
@@ -68,11 +76,19 @@ integrations:
     authMethod: kubernetes
   slack:
     enabled: false
-    botToken: ""
+    # Bot token must be provided via Kubernetes Secret, never in values:
+    # kubectl create secret generic slack-credentials --from-literal=botToken=xoxb-...
+    credentialsSecret:
+      name: slack-credentials
+      key: botToken
     defaultChannel: "#kronveil-alerts"
   pagerduty:
     enabled: false
-    routingKey: ""
+    # Routing key must be provided via Kubernetes Secret, never in values:
+    # kubectl create secret generic pagerduty-credentials --from-literal=routingKey=...
+    credentialsSecret:
+      name: pagerduty-credentials
+      key: routingKey
   prometheus:
     enabled: true
     port: 9090
@@ -86,8 +102,8 @@ dashboard:
   replicaCount: 1
   image:
     repository: kronveil/dashboard
-    pullPolicy: IfNotPresent
-    tag: ""
+    pullPolicy: Always
+    tag: "0.1.0"
 
 service:
   type: ClusterIP
@@ -123,10 +139,17 @@ podAnnotations:
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
+  runAsNonRoot: true
   capabilities:
     drop:
       - ALL
+
+networkPolicy:
+  enabled: true
