@@ -156,6 +156,14 @@ func convertIncident(inc *engine.Incident) *IncidentProto {
 
 // --- gRPC ServiceDesc registration (avoids protoc dependency) ---
 
+// kronveilServiceInterface is required by gRPC's RegisterService, which expects
+// an interface type for HandlerType (used with reflect.Type.Implements).
+type kronveilServiceInterface interface {
+	getHealth(ctx context.Context, req *GetHealthRequest) (*HealthResponse, error)
+	getIncident(ctx context.Context, req *GetIncidentRequest) (*IncidentProto, error)
+	listIncidents(ctx context.Context, req *ListIncidentsRequest) (*ListIncidentsResponse, error)
+}
+
 // RegisterKronveilService registers the Kronveil gRPC service handlers on the server.
 func RegisterKronveilService(s *grpclib.Server, svc *KronveilService) {
 	s.RegisterService(&kronveilServiceDesc, svc)
@@ -163,7 +171,7 @@ func RegisterKronveilService(s *grpclib.Server, svc *KronveilService) {
 
 var kronveilServiceDesc = grpclib.ServiceDesc{
 	ServiceName: "kronveil.v1.KronveilService",
-	HandlerType: (*KronveilService)(nil),
+	HandlerType: (*kronveilServiceInterface)(nil),
 	Methods: []grpclib.MethodDesc{
 		{
 			MethodName: "GetHealth",
