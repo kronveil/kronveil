@@ -220,9 +220,10 @@ func (c *Collector) HandleWebhook(payload map[string]interface{}) {
 	}
 
 	severity := engine.SeverityInfo
-	if conclusion == "failure" || conclusion == "timed_out" {
+	switch conclusion {
+	case "failure", "timed_out":
 		severity = engine.SeverityHigh
-	} else if conclusion == "cancelled" {
+	case "cancelled":
 		severity = engine.SeverityMedium
 	}
 
@@ -327,7 +328,7 @@ func (c *Collector) fetchWorkflowRuns(ctx context.Context, owner, repo string) e
 	if err != nil {
 		return fmt.Errorf("executing request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))

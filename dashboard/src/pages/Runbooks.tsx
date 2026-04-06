@@ -1,4 +1,4 @@
-import { BookOpen, Play, CheckCircle, XCircle, Clock, Zap } from 'lucide-react';
+import { BookOpen, Play, CheckCircle, Clock, Zap } from 'lucide-react';
 
 const mockRunbooks = [
   {

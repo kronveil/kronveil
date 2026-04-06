@@ -48,7 +48,7 @@ func (h *wsHub) broadcast(data []byte) {
 func (s *Server) handleWebSocketEvents(ws *websocket.Conn) {
 	s.wsHub.add(ws)
 	defer s.wsHub.remove(ws)
-	defer ws.Close()
+	defer func() { _ = ws.Close() }()
 
 	log.Printf("[ws] client connected (%s)", ws.Request().RemoteAddr)
 
