@@ -147,16 +147,16 @@ func (a *Adapter) Start(ctx context.Context) error {
 // waits for it to finish before closing the event channel.
 func (a *Adapter) Stop() error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	if !a.running {
+		a.mu.Unlock()
 		return nil
 	}
 	a.running = false
-
 	if a.cancel != nil {
 		a.cancel()
 	}
+	a.mu.Unlock()
+
 	a.wg.Wait()
 	close(a.events)
 
