@@ -3,6 +3,7 @@ package vault
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -29,6 +30,8 @@ type Client struct {
 	secrets     map[string]*SecretMetadata
 	certs       map[string]*CertificateInfo
 	lastErr     error
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
 }
 
 // SecretMetadata tracks metadata about a monitored secret.
@@ -101,6 +104,10 @@ func (c *Client) Initialize(ctx context.Context) error {
 }
 
 func (c *Client) Close() error {
+	if c.cancel != nil {
+		c.cancel()
+	}
+	c.wg.Wait()
 	log.Println("[vault] Vault integration closed")
 	return nil
 }
@@ -149,9 +156,178 @@ func (c *Client) ReadSecret(ctx context.Context, path string) (map[string]interf
 	return secret.Data, nil
 }
 
+// StartBackgroundSync begins periodic synchronization of tracked secrets and
+// certificates from Vault. It runs until the provided context is cancelled or
+// Close is called.
+func (c *Client) StartBackgroundSync(ctx context.Context, interval time.Duration) {
+	ctx, cancel := context.WithCancel(ctx)
+	c.mu.Lock()
+	c.cancel = cancel
+	c.mu.Unlock()
+
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		// Run an initial sync immediately.
+		c.syncSecrets(ctx)
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("[vault] background sync stopped")
+				return
+			case <-ticker.C:
+				c.syncSecrets(ctx)
+			}
+		}
+	}()
+	log.Printf("[vault] background sync started (interval: %s)", interval)
+}
+
+// syncSecrets fetches metadata for all tracked secrets and certificates from Vault.
+func (c *Client) syncSecrets(ctx context.Context) {
+	if c.vaultClient == nil {
+		return
+	}
+
+	c.mu.RLock()
+	paths := make([]string, 0, len(c.secrets))
+	for p := range c.secrets {
+		paths = append(paths, p)
+	}
+	certPaths := make([]string, 0, len(c.certs))
+	for p := range c.certs {
+		certPaths = append(certPaths, p)
+	}
+	c.mu.RUnlock()
+
+	for _, path := range paths {
+		// Verify the secret still exists.
+		_, err := c.ReadSecret(ctx, path)
+		if err != nil {
+			log.Printf("[vault] sync: secret at %s is not readable: %v", path, err)
+			continue
+		}
+
+		// Fetch KV v2 metadata.
+		metaSecret, err := c.vaultClient.Logical().ReadWithContext(ctx, "secret/metadata/"+path)
+		if err != nil {
+			log.Printf("[vault] sync: failed to read metadata for %s: %v", path, err)
+			continue
+		}
+		if metaSecret == nil {
+			continue
+		}
+
+		c.mu.Lock()
+		meta, ok := c.secrets[path]
+		if ok {
+			if versionRaw, exists := metaSecret.Data["current_version"]; exists {
+				if vNum, numOk := versionRaw.(json.Number); numOk {
+					if v, convErr := vNum.Int64(); convErr == nil {
+						meta.Version = int(v)
+					}
+				}
+			}
+			if createdRaw, exists := metaSecret.Data["created_time"]; exists {
+				if ts, tsOk := createdRaw.(string); tsOk {
+					if t, parseErr := time.Parse(time.RFC3339Nano, ts); parseErr == nil {
+						meta.CreatedAt = t
+						meta.LastRotated = t
+					}
+				}
+			}
+		}
+		c.mu.Unlock()
+	}
+
+	for _, path := range certPaths {
+		c.syncCertificate(ctx, path)
+	}
+}
+
+// syncCertificate fetches certificate data from Vault and updates expiry info.
+func (c *Client) syncCertificate(ctx context.Context, path string) {
+	if c.vaultClient == nil {
+		return
+	}
+
+	secret, err := c.vaultClient.Logical().ReadWithContext(ctx, path)
+	if err != nil {
+		log.Printf("[vault] sync: failed to read certificate at %s: %v", path, err)
+		return
+	}
+	if secret == nil || secret.Data == nil {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cert, ok := c.certs[path]
+	if !ok {
+		return
+	}
+
+	if nb, exists := secret.Data["not_before"]; exists {
+		if ts, tsOk := nb.(string); tsOk {
+			if t, parseErr := time.Parse(time.RFC3339Nano, ts); parseErr == nil {
+				cert.NotBefore = t
+			}
+		}
+	}
+	if na, exists := secret.Data["not_after"]; exists {
+		if ts, tsOk := na.(string); tsOk {
+			if t, parseErr := time.Parse(time.RFC3339Nano, ts); parseErr == nil {
+				cert.NotAfter = t
+				cert.DaysToExpiry = int(time.Until(t).Hours() / 24)
+			}
+		}
+	}
+}
+
 // MonitorSecretRotation checks if secrets are within their rotation window.
+// When a Vault client is available, it also fetches metadata from Vault to
+// determine the actual last rotation time.
 func (c *Client) MonitorSecretRotation(ctx context.Context, paths []string, maxAge time.Duration) []SecretMetadata {
 	var dueForRotation []SecretMetadata
+
+	// If Vault client is available, refresh metadata for requested paths.
+	if c.vaultClient != nil {
+		for _, path := range paths {
+			metaSecret, err := c.vaultClient.Logical().ReadWithContext(ctx, "secret/metadata/"+path)
+			if err != nil {
+				log.Printf("[vault] monitor rotation: failed to read metadata for %s: %v", path, err)
+				continue
+			}
+			if metaSecret == nil {
+				continue
+			}
+
+			c.mu.Lock()
+			meta, ok := c.secrets[path]
+			if ok {
+				if createdRaw, exists := metaSecret.Data["created_time"]; exists {
+					if ts, tsOk := createdRaw.(string); tsOk {
+						if t, parseErr := time.Parse(time.RFC3339Nano, ts); parseErr == nil {
+							meta.LastRotated = t
+						}
+					}
+				}
+				if versionRaw, exists := metaSecret.Data["current_version"]; exists {
+					if vNum, numOk := versionRaw.(json.Number); numOk {
+						if v, convErr := vNum.Int64(); convErr == nil {
+							meta.Version = int(v)
+						}
+					}
+				}
+			}
+			c.mu.Unlock()
+		}
+	}
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -166,8 +342,24 @@ func (c *Client) MonitorSecretRotation(ctx context.Context, paths []string, maxA
 	return dueForRotation
 }
 
-// MonitorCertificates checks certificate expiry.
+// MonitorCertificates checks certificate expiry. When a Vault client is
+// available, it reads PKI cert data from Vault for each tracked certificate
+// path before evaluating expiry.
 func (c *Client) MonitorCertificates(ctx context.Context, warningDays int) []CertificateInfo {
+	// If Vault client is available, refresh certificate data from Vault.
+	if c.vaultClient != nil {
+		c.mu.RLock()
+		certPaths := make([]string, 0, len(c.certs))
+		for p := range c.certs {
+			certPaths = append(certPaths, p)
+		}
+		c.mu.RUnlock()
+
+		for _, path := range certPaths {
+			c.syncCertificate(ctx, path)
+		}
+	}
+
 	var expiring []CertificateInfo
 
 	c.mu.RLock()

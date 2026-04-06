@@ -5,6 +5,7 @@ import Incidents from './pages/Incidents';
 import Anomalies from './pages/Anomalies';
 import Collectors from './pages/Collectors';
 import Policies from './pages/Policies';
+import Runbooks from './pages/Runbooks';
 import Settings from './pages/Settings';
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/anomalies" element={<Anomalies />} />
           <Route path="/collectors" element={<Collectors />} />
           <Route path="/policies" element={<Policies />} />
+          <Route path="/runbooks" element={<Runbooks />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>

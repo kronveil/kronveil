@@ -41,6 +41,7 @@ type Server struct {
 	mux       *http.ServeMux
 	limiter   *RateLimiter
 	startErr  chan error
+	wsHub     *wsHub
 }
 
 // NewServer creates a new REST API server.
@@ -51,6 +52,7 @@ func NewServer(config Config, eng *engine.Engine, resp *incident.Responder, det 
 		responder: resp,
 		detector:  det,
 		mux:       http.NewServeMux(),
+		wsHub:     newWSHub(),
 	}
 
 	// Apply safe defaults.
@@ -78,6 +80,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/collectors", s.withAuth(s.handleListCollectors))
 	s.mux.HandleFunc("/api/v1/metrics/summary", s.withAuth(s.handleMetricsSummary))
 	s.mux.HandleFunc("/api/v1/test/inject", s.withAuth(s.handleTestInject))
+	s.mux.Handle("/api/v1/ws/events", s.wsUpgradeHandler())
 }
 
 // handleIncidents dispatches /api/v1/incidents requests.
@@ -134,6 +137,8 @@ func (s *Server) Start() error {
 		s.server.TLSConfig = tlsConfig
 		log.Printf("[api] REST API server listening on :%d (TLS enabled, mTLS: %v)", s.config.Port, s.config.MutualTLS)
 
+		s.startEventBroadcaster()
+
 		s.startErr = make(chan error, 1)
 		go func() {
 			if err := s.server.ListenAndServeTLS(s.config.TLSCertFile, s.config.TLSKeyFile); err != http.ErrServerClosed {
@@ -146,6 +151,9 @@ func (s *Server) Start() error {
 	}
 
 	log.Printf("[api] REST API server listening on :%d", s.config.Port)
+	log.Printf("[api] WebSocket endpoint: ws://localhost:%d/api/v1/ws/events", s.config.Port)
+
+	s.startEventBroadcaster()
 
 	s.startErr = make(chan error, 1)
 	go func() {

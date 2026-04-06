@@ -13,6 +13,7 @@ import (
 
 	grpcserver "github.com/kronveil/kronveil/api/grpc"
 	"github.com/kronveil/kronveil/api/rest"
+	cicdcollector "github.com/kronveil/kronveil/collectors/cicd"
 	cloudcollector "github.com/kronveil/kronveil/collectors/cloud"
 	k8scollector "github.com/kronveil/kronveil/collectors/kubernetes"
 	kafkacollector "github.com/kronveil/kronveil/collectors/kafka"
@@ -183,6 +184,18 @@ func main() {
 			if err := registry.RegisterCollector(cc); err != nil {
 				log.Fatalf("Failed to register cloud collector: %v", err)
 			}
+		}
+	}
+
+	// Register CI/CD collector.
+	if cfg.Collectors.CICD.Enabled {
+		cicd := cicdcollector.New(cicdcollector.Config{
+			WebhookPort:   cfg.Collectors.CICD.WebhookPort,
+			RepoFilters:   cfg.Collectors.CICD.RepoFilters,
+			GithubToken:   cfg.Collectors.CICD.GithubToken,
+		})
+		if err := registry.RegisterCollector(cicd); err != nil {
+			log.Fatalf("Failed to register cicd collector: %v", err)
 		}
 	}
 

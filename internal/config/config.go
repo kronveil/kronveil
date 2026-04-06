@@ -46,10 +46,23 @@ type CollectorsConfig struct {
 }
 
 type KubernetesCollectorConfig struct {
-	Enabled      bool          `yaml:"enabled" json:"enabled"`
-	Kubeconfig   string        `yaml:"kubeconfig" json:"kubeconfig"`
-	Namespaces   []string      `yaml:"namespaces" json:"namespaces"`
-	PollInterval time.Duration `yaml:"poll_interval" json:"poll_interval"`
+	Enabled      bool                    `yaml:"enabled" json:"enabled"`
+	Kubeconfig   string                  `yaml:"kubeconfig" json:"kubeconfig"`
+	Namespaces   []string                `yaml:"namespaces" json:"namespaces"`
+	PollInterval time.Duration           `yaml:"poll_interval" json:"poll_interval"`
+	Clusters     []ClusterConfig         `yaml:"clusters" json:"clusters"`
+}
+
+// ClusterConfig holds the configuration for a single Kubernetes cluster
+// in a multi-cluster federation setup.
+type ClusterConfig struct {
+	Name           string        `yaml:"name" json:"name"`
+	KubeconfigPath string        `yaml:"kubeconfig_path" json:"kubeconfig_path"`
+	Context        string        `yaml:"context" json:"context"`
+	APIServer      string        `yaml:"api_server" json:"api_server"`
+	Namespaces     []string      `yaml:"namespaces" json:"namespaces"`
+	PollInterval   time.Duration `yaml:"poll_interval" json:"poll_interval"`
+	Enabled        bool          `yaml:"enabled" json:"enabled"`
 }
 
 type KafkaCollectorConfig struct {
@@ -71,6 +84,7 @@ type CICDCollectorConfig struct {
 	Enabled     bool     `yaml:"enabled" json:"enabled"`
 	WebhookPort int      `yaml:"webhook_port" json:"webhook_port"`
 	RepoFilters []string `yaml:"repo_filters" json:"repo_filters"`
+	GithubToken string   `yaml:"github_token" json:"github_token"`
 }
 
 type LogsCollectorConfig struct {

@@ -5,6 +5,7 @@ import {
   Activity,
   Radio,
   Shield,
+  BookOpen,
   Settings,
   Eye,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/anomalies', icon: Activity, label: 'Anomalies' },
   { to: '/collectors', icon: Radio, label: 'Collectors' },
   { to: '/policies', icon: Shield, label: 'Policies' },
+  { to: '/runbooks', icon: BookOpen, label: 'Runbooks' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

@@ -1,8 +1,9 @@
-import { Activity, AlertTriangle, Zap, Server, Clock, Shield } from 'lucide-react';
+import { Activity, AlertTriangle, Zap, Server, Clock, Shield, Radio } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import MetricCard from '../components/MetricCard';
 import StatusBadge from '../components/StatusBadge';
 import EventTimeline from '../components/EventTimeline';
+import { useEventStream } from '../hooks/useEventStream';
 
 const throughputData = Array.from({ length: 24 }, (_, i) => ({
   time: `${i}:00`,
@@ -48,10 +49,23 @@ const clusterHealth = [
 ];
 
 export default function Overview() {
+  const { events: liveEvents, connected: wsConnected } = useEventStream();
+
+  // Use live WebSocket events when connected and available, otherwise fall back to mock data
+  const displayEvents = wsConnected && liveEvents.length > 0 ? liveEvents : recentEvents;
+
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex items-center gap-3">
         <h1 className="text-2xl font-display font-extrabold tracking-tight">Overview</h1>
+        {wsConnected && (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-green-500/10 text-green-400 border border-green-500/20">
+            <Radio className="w-3 h-3 animate-pulse" />
+            Live
+          </span>
+        )}
+      </div>
+      <div>
         <p className="text-sm text-[#718096] mt-1">Real-time infrastructure intelligence</p>
       </div>
 
@@ -154,8 +168,15 @@ export default function Overview() {
 
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2 bg-[#070e1a] border border-[rgba(99,179,237,0.12)] rounded-xl p-5">
-          <h2 className="text-sm font-display font-bold tracking-tight mb-4">Live Event Feed</h2>
-          <EventTimeline events={recentEvents} />
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-display font-bold tracking-tight">Live Event Feed</h2>
+            {wsConnected ? (
+              <span className="text-[10px] font-mono text-green-400">streaming</span>
+            ) : (
+              <span className="text-[10px] font-mono text-[#718096]">polling</span>
+            )}
+          </div>
+          <EventTimeline events={displayEvents} />
         </div>
 
         <div className="bg-[#070e1a] border border-[rgba(99,179,237,0.12)] rounded-xl p-5">

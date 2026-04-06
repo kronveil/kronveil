@@ -35,6 +35,7 @@ type Collector struct {
 	kafkaClient *kafkago.Client
 	events      chan *engine.TelemetryEvent
 	lagMon      *LagMonitor
+	prevOffsets map[string]map[int]int64 // topic -> partition -> offset
 	mu          sync.RWMutex
 	running     bool
 	cancel      context.CancelFunc
@@ -50,9 +51,10 @@ type Collector struct {
 // New creates a new Kafka collector.
 func New(config Config) *Collector {
 	c := &Collector{
-		config: config,
-		events: make(chan *engine.TelemetryEvent, 500),
-		lagMon: NewLagMonitor(config.LagThreshold),
+		config:      config,
+		events:      make(chan *engine.TelemetryEvent, 500),
+		lagMon:      NewLagMonitor(config.LagThreshold),
+		prevOffsets: make(map[string]map[int]int64),
 	}
 
 	if config.BootstrapServers != "" {
@@ -271,13 +273,98 @@ func (c *Collector) monitorThroughput(ctx context.Context) {
 	ticker := time.NewTicker(c.config.PollInterval)
 	defer ticker.Stop()
 
+	lastPoll := time.Now()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if c.kafkaClient == nil {
+				for _, topic := range c.config.MonitoredTopics {
+					c.emitEvent("throughput", map[string]interface{}{
+						"topic": topic,
+						"type":  "cluster_throughput",
+					}, engine.SeverityInfo)
+				}
+				continue
+			}
+
+			conn, err := kafkago.Dial("tcp", c.config.BootstrapServers)
+			if err != nil {
+				c.mu.Lock()
+				c.lastErr = err
+				c.mu.Unlock()
+				log.Printf("[kafka-collector] Failed to connect to Kafka for throughput: %v", err)
+				continue
+			}
+
+			now := time.Now()
+			elapsed := now.Sub(lastPoll).Seconds()
+			if elapsed <= 0 {
+				elapsed = 1
+			}
+			lastPoll = now
+
+			var totalClusterThroughput float64
+
+			for _, topic := range c.config.MonitoredTopics {
+				partitions, err := conn.ReadPartitions(topic)
+				if err != nil {
+					log.Printf("[kafka-collector] Failed to read partitions for %s: %v", topic, err)
+					continue
+				}
+
+				var topicThroughput float64
+
+				for _, p := range partitions {
+					leaderAddr := fmt.Sprintf("%s:%d", p.Leader.Host, p.Leader.Port)
+					pConn, err := kafkago.Dial("tcp", leaderAddr)
+					if err != nil {
+						log.Printf("[kafka-collector] Failed to dial leader %s for %s/%d: %v",
+							leaderAddr, topic, p.ID, err)
+						continue
+					}
+
+					offset, err := pConn.ReadLastOffset()
+					_ = pConn.Close()
+					if err != nil {
+						log.Printf("[kafka-collector] Failed to read last offset for %s/%d: %v",
+							topic, p.ID, err)
+						continue
+					}
+
+					if prev, ok := c.prevOffsets[topic]; ok {
+						if prevOffset, ok := prev[p.ID]; ok {
+							diff := offset - prevOffset
+							if diff > 0 {
+								rate := float64(diff) / elapsed
+								topicThroughput += rate
+							}
+						}
+					}
+
+					// Store current offset for next poll.
+					if c.prevOffsets[topic] == nil {
+						c.prevOffsets[topic] = make(map[int]int64)
+					}
+					c.prevOffsets[topic][p.ID] = offset
+				}
+
+				totalClusterThroughput += topicThroughput
+
+				c.emitEvent("throughput", map[string]interface{}{
+					"topic":        topic,
+					"messages_sec": topicThroughput,
+					"type":         "topic_throughput",
+				}, engine.SeverityInfo)
+			}
+
+			_ = conn.Close()
+
 			c.emitEvent("throughput", map[string]interface{}{
-				"type": "cluster_throughput",
+				"messages_sec": totalClusterThroughput,
+				"type":         "cluster_throughput",
 			}, engine.SeverityInfo)
 		}
 	}

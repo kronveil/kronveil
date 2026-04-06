@@ -2,6 +2,22 @@ import type { Incident, Anomaly, Collector, Policy, MetricsSummary, HealthStatus
 
 const API_BASE = '/api/v1';
 
+/**
+ * Base URL for WebSocket connections.
+ * Uses the current host with ws:// (or wss:// for HTTPS).
+ */
+export const WS_BASE_URL =
+  typeof window !== 'undefined'
+    ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+    : 'ws://localhost:8080';
+
+/**
+ * Build a full WebSocket URL for a given API path.
+ */
+export function getWebSocketUrl(path: string): string {
+  return `${WS_BASE_URL}${path}`;
+}
+
 async function fetchJSON<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) {
